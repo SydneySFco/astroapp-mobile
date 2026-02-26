@@ -40,12 +40,3 @@ Replay tick telemetry alanları:
 ## Operasyon Notu
 `ReplayQuarantineStore` persistence'i infra'ya bırakılmıştır.
 RLOOP-043'te quarantine retention/purge, dashboard read-model ve operator re-drive endpoint'i önerilir.
-
-## RLOOP-043 Güncellemesi
-RLOOP-043 ile control plane taslağı çıkarılmıştır:
-- Quarantine persistence + audit SQL draft
-- Read-model contract (list/detail)
-- Admin operasyon handler skeletonları (`redrive`, `drop`)
-- Metrik isimleri ve oran hesap helper'ı
-
-Detay: `docs/QUARANTINE_CONTROL_PLANE_RLOOP-043.md`

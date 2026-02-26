@@ -61,3 +61,37 @@ Doğrulanan temel senaryolar:
 1. connector cursor advance + watermark persist
 2. suppression window davranışı
 3. retry/backoff + DLQ fallback
+
+## Runtime Infra Binding Update (RLOOP-042)
+
+`SqlWatermarkStateStoreAdapter` için concrete binding örnekleri eklendi:
+- `createSupabaseWatermarkBindings(supabaseClient, table?)`
+- `createPostgresWatermarkBindings(pgClient, table?)`
+
+Bu helper'lar callback üretir ve aşağıdaki store factory ile zincirlenir:
+- `createSupabaseWatermarkStateStore(bindings)`
+- `createPostgresWatermarkStateStore(bindings)`
+
+Örnek kullanım (supabase-js pattern):
+
+```ts
+const bindings = createSupabaseWatermarkBindings(supabase, env.reliabilityStateStoreTable);
+const stateStore = createSupabaseWatermarkStateStore(bindings);
+```
+
+Örnek kullanım (pg pattern):
+
+```ts
+const bindings = createPostgresWatermarkBindings(pgPool, env.reliabilityStateStoreTable);
+const stateStore = createPostgresWatermarkStateStore(bindings);
+```
+
+## Env Contract Update (RLOOP-042)
+
+Yeni runtime env alanları:
+- `RELIABILITY_STATE_STORE_DRIVER` (`supabase | postgres | file`)
+- `RELIABILITY_STATE_STORE_TABLE` (default: `watermark_state`)
+- `RELIABILITY_REPLAY_MAX_COUNT`
+- `RELIABILITY_REPLAY_BASE_BACKOFF_MS`
+- `RELIABILITY_REPLAY_MAX_BACKOFF_MS`
+- `RELIABILITY_REPLAY_JITTER_FACTOR`
