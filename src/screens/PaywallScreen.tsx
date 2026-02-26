@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {useDispatch} from 'react-redux';
 
+import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
 import {setPremium} from '../features/subscription/subscriptionSlice';
 import {colors} from '../theme/colors';
@@ -12,6 +13,7 @@ type Props = {
 
 type PlanType = 'monthly' | 'yearly';
 type PurchaseResult = 'idle' | 'success' | 'fail' | 'cancel';
+type RequestStatus = 'idle' | 'loading' | 'error';
 
 const VALUE_PROPS = [
   'Her gün kişisel rehberlik ve mikro aksiyon',
@@ -19,10 +21,14 @@ const VALUE_PROPS = [
   'Reklamsız deneyim + premium içeriklere tam erişim',
 ];
 
+const MOCK_TIMEOUT_MS = 1200;
+
 export function PaywallScreen({onClose}: Props) {
   const dispatch = useDispatch();
   const [selectedPlan, setSelectedPlan] = useState<PlanType>('yearly');
   const [result, setResult] = useState<PurchaseResult>('idle');
+  const [status, setStatus] = useState<RequestStatus>('idle');
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     trackEvent('paywall_view', {source: 'free_home_entry'});
@@ -41,17 +47,64 @@ export function PaywallScreen({onClose}: Props) {
     }
   }, [result]);
 
-  const onSubscribe = () => {
-    setResult('success');
-    dispatch(setPremium(true));
-    trackEvent('subscribe_success', {plan: selectedPlan});
+  const runPurchase = (purchaseType: 'subscribe' | 'restore') => {
+    setStatus('loading');
+    setResult('idle');
+
+    setTimeout(() => {
+      const shouldTimeout = attempt % 2 === 0;
+      setAttempt(current => current + 1);
+
+      if (shouldTimeout) {
+        setStatus('error');
+        trackEvent('paywall_error', {
+          source: purchaseType,
+          reason: 'timeout',
+          plan: selectedPlan,
+        });
+        return;
+      }
+
+      setStatus('idle');
+      setResult('success');
+      dispatch(setPremium(true));
+      trackEvent('subscribe_success', {plan: purchaseType === 'restore' ? 'restore' : selectedPlan});
+    }, MOCK_TIMEOUT_MS);
   };
 
-  const onRestorePurchases = () => {
-    setResult('success');
-    dispatch(setPremium(true));
-    trackEvent('subscribe_success', {plan: 'restore'});
-  };
+  if (status === 'loading') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Premium’a geç</Text>
+        <ScreenState
+          mode="loading"
+          title="Ödeme hazırlanıyor"
+          description="Bağlantı kuruluyor, lütfen bekle."
+        />
+      </View>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Premium’a geç</Text>
+        <ScreenState
+          mode="error"
+          title="Bağlantı zaman aşımına uğradı"
+          description="Ağ zayıf görünüyor. Yeniden deneyerek işleme devam edebilirsin."
+          onRetry={() => {
+            trackEvent('paywall_retry', {plan: selectedPlan});
+            runPurchase('subscribe');
+          }}
+        />
+
+        <Pressable onPress={onClose}>
+          <Text style={styles.backText}>Geri dön</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -83,11 +136,11 @@ export function PaywallScreen({onClose}: Props) {
         ))}
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={onSubscribe}>
+      <Pressable style={styles.primaryButton} onPress={() => runPurchase('subscribe')}>
         <Text style={styles.primaryButtonText}>Premium’u Başlat</Text>
       </Pressable>
 
-      <Pressable onPress={onRestorePurchases}>
+      <Pressable onPress={() => runPurchase('restore')}>
         <Text style={styles.restoreText}>Restore Purchases</Text>
       </Pressable>
 

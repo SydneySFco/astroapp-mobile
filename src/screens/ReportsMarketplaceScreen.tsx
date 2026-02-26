@@ -1,6 +1,8 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
+import {ScreenState} from '../components/ScreenState';
+import {trackEvent} from '../features/analytics/analytics';
 import {Report} from '../features/reports/reportsSlice';
 import {colors} from '../theme/colors';
 
@@ -16,15 +18,29 @@ export function ReportsMarketplaceScreen({reports, onSelectReport, onClose}: Pro
       <Text style={styles.title}>Rapor Marketi</Text>
       <Text style={styles.subtitle}>Kendin için en uygun raporu seç, ön izle ve satın al.</Text>
 
-      <View style={styles.cardList}>
-        {reports.map(report => (
-          <Pressable key={report.id} style={styles.card} onPress={() => onSelectReport(report.id)}>
-            <Text style={styles.cardTitle}>{report.title}</Text>
-            <Text style={styles.cardDescription}>{report.shortDescription}</Text>
-            <Text style={styles.price}>₺{report.price}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {reports.length === 0 ? (
+        <ScreenState
+          mode="empty"
+          title="Henüz rapor bulunmuyor"
+          description="Market kısa süreliğine boş görünüyor. Birazdan tekrar kontrol edebilirsin."
+        />
+      ) : (
+        <View style={styles.cardList}>
+          {reports.map(report => (
+            <Pressable
+              key={report.id}
+              style={styles.card}
+              onPress={() => {
+                trackEvent('report_view', {report_id: report.id, source: 'marketplace'});
+                onSelectReport(report.id);
+              }}>
+              <Text style={styles.cardTitle}>{report.title}</Text>
+              <Text style={styles.cardDescription}>{report.shortDescription}</Text>
+              <Text style={styles.price}>₺{report.price}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <Pressable onPress={onClose}>
         <Text style={styles.backText}>Ana sayfaya dön</Text>

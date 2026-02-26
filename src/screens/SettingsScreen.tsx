@@ -1,10 +1,12 @@
 import React, {useState} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
+import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
 import {colors} from '../theme/colors';
 
 type DeleteRequestStatus = 'idle' | 'success' | 'fail';
+type RequestStatus = 'idle' | 'loading' | 'error';
 
 type Props = {
   onOpenLegal: () => void;
@@ -13,6 +15,8 @@ type Props = {
 
 export function SettingsScreen({onOpenLegal, onLogout}: Props) {
   const [deleteStatus, setDeleteStatus] = useState<DeleteRequestStatus>('idle');
+  const [requestStatus, setRequestStatus] = useState<RequestStatus>('idle');
+  const [attempt, setAttempt] = useState(0);
 
   const handleOpenLegal = () => {
     trackEvent('legal_open', {source: 'settings'});
@@ -25,10 +29,28 @@ export function SettingsScreen({onOpenLegal, onLogout}: Props) {
   };
 
   const handleDeleteRequest = () => {
+    setRequestStatus('loading');
+    setDeleteStatus('idle');
     trackEvent('delete_request_click');
 
-    const isSuccess = Math.random() > 0.35;
-    setDeleteStatus(isSuccess ? 'success' : 'fail');
+    setTimeout(() => {
+      const shouldTimeout = attempt % 2 === 0;
+      setAttempt(current => current + 1);
+
+      if (shouldTimeout) {
+        setRequestStatus('error');
+        trackEvent('settings_error', {scope: 'delete_request', reason: 'timeout'});
+        return;
+      }
+
+      setRequestStatus('idle');
+      const isSuccess = Math.random() > 0.35;
+      setDeleteStatus(isSuccess ? 'success' : 'fail');
+
+      if (!isSuccess) {
+        trackEvent('settings_error', {scope: 'delete_request', reason: 'server_fail'});
+      }
+    }, 900);
   };
 
   return (
@@ -57,6 +79,26 @@ export function SettingsScreen({onOpenLegal, onLogout}: Props) {
       <Pressable style={styles.warningButton} onPress={handleDeleteRequest}>
         <Text style={styles.warningButtonText}>Hesap Silme Talebi Oluştur (Demo)</Text>
       </Pressable>
+
+      {requestStatus === 'loading' ? (
+        <ScreenState
+          mode="loading"
+          title="Silme talebi gönderiliyor"
+          description="İsteğin işleniyor, lütfen bekle."
+        />
+      ) : null}
+
+      {requestStatus === 'error' ? (
+        <ScreenState
+          mode="error"
+          title="Silme talebi zaman aşımına uğradı"
+          description="Bağlantını kontrol edip tekrar dene."
+          onRetry={() => {
+            trackEvent('settings_retry', {scope: 'delete_request'});
+            handleDeleteRequest();
+          }}
+        />
+      ) : null}
 
       {deleteStatus === 'success' ? (
         <Text style={styles.successText}>Talebin alındı. 24 saat içinde e-posta ile dönüş yapılır.</Text>

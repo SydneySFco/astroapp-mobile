@@ -1,6 +1,8 @@
 import React, {useMemo, useState} from 'react';
-import {ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
 
+import {ScreenState} from '../../components/ScreenState';
+import {trackEvent} from '../../features/analytics/analytics';
 import {useLoginMutation} from '../../features/auth/authApi';
 import {colors} from '../../theme/colors';
 
@@ -13,7 +15,7 @@ export function LoginScreen({onGoRegister, onGoForgotPassword}: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localSuccess, setLocalSuccess] = useState('');
-  const [login, {isLoading, isError}] = useLoginMutation();
+  const [login, {isLoading, isError, reset}] = useLoginMutation();
 
   const errors = useMemo(() => {
     const nextErrors: {email?: string; password?: string} = {};
@@ -44,13 +46,21 @@ export function LoginScreen({onGoRegister, onGoForgotPassword}: Props) {
       await login({email: email.trim(), password}).unwrap();
       setLocalSuccess('Giriş başarılı. Hoş geldin ✨');
     } catch {
-      // API hata metni global toast ile de gösterilebilir.
+      trackEvent('auth_error', {scope: 'login'});
     }
   };
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Giriş Yap</Text>
+
+      {isLoading ? (
+        <ScreenState
+          mode="loading"
+          title="Giriş doğrulanıyor"
+          description="Bilgilerin kontrol ediliyor, lütfen bekle."
+        />
+      ) : null}
 
       <TextInput
         placeholder="E-posta"
@@ -71,19 +81,24 @@ export function LoginScreen({onGoRegister, onGoForgotPassword}: Props) {
         onChangeText={setPassword}
         secureTextEntry
       />
-      {password.length > 0 && errors.password ? (
-        <Text style={styles.error}>{errors.password}</Text>
-      ) : null}
+      {password.length > 0 && errors.password ? <Text style={styles.error}>{errors.password}</Text> : null}
 
       <Pressable style={styles.primaryButton} onPress={onSubmit} disabled={isLoading}>
-        {isLoading ? (
-          <ActivityIndicator color={colors.textPrimary} />
-        ) : (
-          <Text style={styles.primaryButtonText}>Giriş Yap</Text>
-        )}
+        <Text style={styles.primaryButtonText}>Giriş Yap</Text>
       </Pressable>
 
-      {isError ? <Text style={styles.error}>Giriş başarısız. Bilgilerini kontrol edip tekrar dene.</Text> : null}
+      {isError ? (
+        <ScreenState
+          mode="error"
+          title="Giriş başarısız"
+          description="Bağlantını veya bilgilerini kontrol edip tekrar deneyebilirsin."
+          onRetry={() => {
+            trackEvent('auth_retry', {scope: 'login'});
+            reset();
+            onSubmit();
+          }}
+        />
+      ) : null}
       {localSuccess ? <Text style={styles.success}>{localSuccess}</Text> : null}
 
       <Pressable onPress={onGoForgotPassword}>

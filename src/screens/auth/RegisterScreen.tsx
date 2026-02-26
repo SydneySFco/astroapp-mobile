@@ -1,7 +1,8 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
 import {useDispatch} from 'react-redux';
 
+import {ScreenState} from '../../components/ScreenState';
 import {trackEvent} from '../../features/analytics/analytics';
 import {useRegisterMutation} from '../../features/auth/authApi';
 import {setOnboardingComplete} from '../../features/onboarding/onboardingSlice';
@@ -37,7 +38,7 @@ export function RegisterScreen({onGoLogin}: Props) {
   const [showSummary, setShowSummary] = useState(false);
   const [localSuccess, setLocalSuccess] = useState('');
 
-  const [register, {isLoading, isError}] = useRegisterMutation();
+  const [register, {isLoading, isError, reset}] = useRegisterMutation();
 
   useEffect(() => {
     trackEvent('signup_start', {source: 'register_screen'});
@@ -131,7 +132,7 @@ export function RegisterScreen({onGoLogin}: Props) {
       setLocalSuccess('Hesabın oluşturuldu. Son adım: kısa özetin hazır ✨');
       setShowSummary(true);
     } catch {
-      // API error state aşağıda gösteriliyor.
+      trackEvent('auth_error', {scope: 'register'});
     }
   };
 
@@ -174,6 +175,14 @@ export function RegisterScreen({onGoLogin}: Props) {
       <Text style={styles.stepIndicator}>
         Adım {step}/{TOTAL_STEPS}
       </Text>
+
+      {isLoading ? (
+        <ScreenState
+          mode="loading"
+          title="Hesap oluşturuluyor"
+          description="Bilgilerin kaydediliyor, lütfen bekle."
+        />
+      ) : null}
 
       {step === 1 ? (
         <TextInput
@@ -284,16 +293,23 @@ export function RegisterScreen({onGoLogin}: Props) {
           </Pressable>
         ) : (
           <Pressable onPress={onSubmit} style={styles.primaryButton} disabled={isLoading}>
-            {isLoading ? (
-              <ActivityIndicator color={colors.textPrimary} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Özeti Gör</Text>
-            )}
+            <Text style={styles.primaryButtonText}>Özeti Gör</Text>
           </Pressable>
         )}
       </View>
 
-      {isError ? <Text style={styles.error}>Kayıt başarısız. Lütfen tekrar dene.</Text> : null}
+      {isError ? (
+        <ScreenState
+          mode="error"
+          title="Kayıt başarısız"
+          description="Zayıf ağ, offline ya da zaman aşımı oluşmuş olabilir."
+          onRetry={() => {
+            trackEvent('auth_retry', {scope: 'register'});
+            reset();
+            onSubmit();
+          }}
+        />
+      ) : null}
       {localSuccess ? <Text style={styles.success}>{localSuccess}</Text> : null}
 
       <Pressable onPress={onGoLogin}>

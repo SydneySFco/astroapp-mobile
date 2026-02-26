@@ -1,6 +1,8 @@
 import React, {useMemo, useState} from 'react';
-import {ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
 
+import {ScreenState} from '../../components/ScreenState';
+import {trackEvent} from '../../features/analytics/analytics';
 import {useForgotPasswordMutation} from '../../features/auth/authApi';
 import {colors} from '../../theme/colors';
 
@@ -11,7 +13,7 @@ type Props = {
 export function ForgotPasswordScreen({onGoLogin}: Props) {
   const [email, setEmail] = useState('');
   const [localSuccess, setLocalSuccess] = useState('');
-  const [forgotPassword, {isLoading, isError}] = useForgotPasswordMutation();
+  const [forgotPassword, {isLoading, isError, reset}] = useForgotPasswordMutation();
 
   const emailError = useMemo(() => {
     if (!email.trim()) {
@@ -35,7 +37,7 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
       await forgotPassword({email: email.trim()}).unwrap();
       setLocalSuccess('Şifre sıfırlama bağlantısı gönderildi. E-postanı kontrol et.');
     } catch {
-      // API error state aşağıda gösteriliyor.
+      trackEvent('auth_error', {scope: 'forgot_password'});
     }
   };
 
@@ -45,6 +47,14 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
       <Text style={styles.subtitle}>
         Hesabına bağlı e-posta adresini gir. Sana şifre sıfırlama bağlantısı gönderelim.
       </Text>
+
+      {isLoading ? (
+        <ScreenState
+          mode="loading"
+          title="Sıfırlama talebi gönderiliyor"
+          description="Bağlantı kuruluyor, lütfen bekle."
+        />
+      ) : null}
 
       <TextInput
         placeholder="E-posta"
@@ -59,15 +69,20 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
       {email.length > 0 && emailError ? <Text style={styles.error}>{emailError}</Text> : null}
 
       <Pressable onPress={onSubmit} style={styles.primaryButton} disabled={isLoading}>
-        {isLoading ? (
-          <ActivityIndicator color={colors.textPrimary} />
-        ) : (
-          <Text style={styles.primaryButtonText}>Bağlantı Gönder</Text>
-        )}
+        <Text style={styles.primaryButtonText}>Bağlantı Gönder</Text>
       </Pressable>
 
       {isError ? (
-        <Text style={styles.error}>İşlem başarısız. Bağlantını kontrol edip tekrar dene.</Text>
+        <ScreenState
+          mode="error"
+          title="İşlem başarısız"
+          description="Bağlantı hatası ya da zaman aşımı oluştu."
+          onRetry={() => {
+            trackEvent('auth_retry', {scope: 'forgot_password'});
+            reset();
+            onSubmit();
+          }}
+        />
       ) : null}
       {localSuccess ? <Text style={styles.success}>{localSuccess}</Text> : null}
 

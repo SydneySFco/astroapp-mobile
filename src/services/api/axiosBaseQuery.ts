@@ -17,7 +17,7 @@ export const axiosBaseQuery =
   ({baseUrl}: AxiosBaseQueryConfig = {baseUrl: ''}): BaseQueryFn<
     AxiosBaseQueryArgs,
     unknown,
-    {status?: number; data?: unknown}
+    {status?: number | 'TIMEOUT'; data?: unknown}
   > =>
   async ({url, method = 'GET', data, params}) => {
     try {
@@ -26,6 +26,7 @@ export const axiosBaseQuery =
         method,
         data,
         params,
+        timeout: 8000,
       });
 
       return {data: result.data};
@@ -33,7 +34,7 @@ export const axiosBaseQuery =
       const err = axiosError as AxiosError;
       return {
         error: {
-          status: err.response?.status,
+          status: err.code === 'ECONNABORTED' ? 'TIMEOUT' : err.response?.status,
           data: err.response?.data ?? err.message,
         },
       };

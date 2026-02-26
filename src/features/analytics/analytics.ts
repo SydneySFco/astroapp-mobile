@@ -10,7 +10,15 @@ type AnalyticsEventName =
   | 'settings_view'
   | 'logout_click'
   | 'delete_request_click'
-  | 'legal_open';
+  | 'legal_open'
+  | 'auth_error'
+  | 'auth_retry'
+  | 'paywall_error'
+  | 'paywall_retry'
+  | 'reports_error'
+  | 'reports_retry'
+  | 'settings_error'
+  | 'settings_retry';
 
 type AnalyticsPayload = Record<string, string | number | boolean>;
 

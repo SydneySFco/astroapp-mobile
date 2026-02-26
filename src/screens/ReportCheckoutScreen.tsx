@@ -1,11 +1,13 @@
 import React, {useMemo, useState} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
+import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
 import {Report} from '../features/reports/reportsSlice';
 import {colors} from '../theme/colors';
 
 type CheckoutResult = 'idle' | 'success' | 'fail' | 'cancel';
+type RequestStatus = 'idle' | 'loading' | 'error';
 
 type Props = {
   report: Report;
@@ -13,8 +15,12 @@ type Props = {
   onBack: () => void;
 };
 
+const MOCK_TIMEOUT_MS = 1000;
+
 export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
   const [result, setResult] = useState<CheckoutResult>('idle');
+  const [status, setStatus] = useState<RequestStatus>('idle');
+  const [attempt, setAttempt] = useState(0);
 
   const resultText = useMemo(() => {
     switch (result) {
@@ -29,17 +35,43 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
     }
   }, [result]);
 
-  const complete = (nextResult: Exclude<CheckoutResult, 'idle'>) => {
-    setResult(nextResult);
-    trackEvent('report_buy', {
-      report_id: report.id,
-      price: report.price,
-      result: nextResult,
-    });
-
-    if (nextResult === 'success') {
-      onSuccess();
+  const runCheckout = (nextResult: Exclude<CheckoutResult, 'idle'>) => {
+    if (nextResult !== 'success') {
+      setResult(nextResult);
+      trackEvent('report_buy', {
+        report_id: report.id,
+        price: report.price,
+        result: nextResult,
+      });
+      return;
     }
+
+    setStatus('loading');
+    setResult('idle');
+
+    setTimeout(() => {
+      const shouldTimeout = attempt % 2 === 0;
+      setAttempt(current => current + 1);
+
+      if (shouldTimeout) {
+        setStatus('error');
+        trackEvent('reports_error', {
+          scope: 'checkout',
+          report_id: report.id,
+          reason: 'timeout',
+        });
+        return;
+      }
+
+      setStatus('idle');
+      setResult('success');
+      trackEvent('report_buy', {
+        report_id: report.id,
+        price: report.price,
+        result: 'success',
+      });
+      onSuccess();
+    }, MOCK_TIMEOUT_MS);
   };
 
   return (
@@ -48,17 +80,35 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
       <Text style={styles.description}>{report.title}</Text>
       <Text style={styles.price}>Ödenecek tutar: ₺{report.price}</Text>
 
-      <View style={styles.stateButtons}>
-        <Pressable style={styles.primaryButton} onPress={() => complete('success')}>
-          <Text style={styles.primaryButtonText}>Success</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryButton} onPress={() => complete('fail')}>
-          <Text style={styles.secondaryButtonText}>Fail</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryButton} onPress={() => complete('cancel')}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
-        </Pressable>
-      </View>
+      {status === 'loading' ? (
+        <ScreenState
+          mode="loading"
+          title="Ödeme bağlantısı kuruluyor"
+          description="İşlem hazırlanıyor, lütfen bekle."
+        />
+      ) : status === 'error' ? (
+        <ScreenState
+          mode="error"
+          title="Checkout zaman aşımına uğradı"
+          description="Bağlantı zayıf görünüyor. Tekrar deneyerek satın almayı sürdürebilirsin."
+          onRetry={() => {
+            trackEvent('reports_retry', {scope: 'checkout', report_id: report.id});
+            runCheckout('success');
+          }}
+        />
+      ) : (
+        <View style={styles.stateButtons}>
+          <Pressable style={styles.primaryButton} onPress={() => runCheckout('success')}>
+            <Text style={styles.primaryButtonText}>Success</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => runCheckout('fail')}>
+            <Text style={styles.secondaryButtonText}>Fail</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={() => runCheckout('cancel')}>
+            <Text style={styles.secondaryButtonText}>Cancel</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Text
         style={[
@@ -69,7 +119,12 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
       </Text>
 
       {(result === 'fail' || result === 'cancel') && (
-        <Pressable style={styles.retryButton} onPress={() => complete('success')}>
+        <Pressable
+          style={styles.retryButton}
+          onPress={() => {
+            trackEvent('reports_retry', {scope: 'checkout', report_id: report.id});
+            runCheckout('success');
+          }}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </Pressable>
       )}
