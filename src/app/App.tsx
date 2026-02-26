@@ -4,7 +4,11 @@ import {useDispatch, useSelector} from 'react-redux';
 
 import {trackEvent} from '../features/analytics/analytics';
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
-import {markReportPurchased} from '../features/reports/reportsSlice';
+import {
+  useGetReportCatalogQuery,
+  useGetPurchasedReportsQuery,
+  usePurchaseReportMutation,
+} from '../features/reports/reportsApi';
 import {setPremium} from '../features/subscription/subscriptionSlice';
 import {runLogoutFlow} from '../features/auth/logoutFlow';
 import {AuthFlowScreen} from '../screens/auth/AuthFlowScreen';
@@ -36,11 +40,30 @@ export function App() {
   const dispatch = useDispatch();
   const {colors, preference, setPreference, resolvedMode} = useTheme();
   const onboardingComplete = useSelector((state: RootState) => state.onboarding.completed);
-  const reportsCatalog = useSelector((state: RootState) => state.reports.catalog);
-  const purchasedReportIds = useSelector((state: RootState) => state.reports.purchasedReportIds);
 
   const [screen, setScreen] = useState<AppScreen>('home');
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [localPurchasedReportIds, setLocalPurchasedReportIds] = useState<string[]>([]);
+
+  const {
+    data: catalogData,
+    isLoading: isCatalogLoading,
+    isError: isCatalogError,
+    refetch: refetchCatalog,
+  } = useGetReportCatalogQuery();
+  const {
+    data: purchasedData,
+    isLoading: isPurchasedLoading,
+    isError: isPurchasedError,
+    refetch: refetchPurchased,
+  } = useGetPurchasedReportsQuery();
+  const [purchaseReport] = usePurchaseReportMutation();
+
+  const reportsCatalog = useMemo(() => catalogData?.items ?? [], [catalogData?.items]);
+  const purchasedReportIds = useMemo(() => {
+    const remotePurchased = (purchasedData?.items ?? []).map(item => item.reportId);
+    return Array.from(new Set([...remotePurchased, ...localPurchasedReportIds]));
+  }, [localPurchasedReportIds, purchasedData?.items]);
 
   const activeReport = useMemo(
     () => reportsCatalog.find(item => item.id === activeReportId) ?? null,
@@ -57,12 +80,24 @@ export function App() {
     setScreen(nextScreen);
   };
 
-  const completePurchase = () => {
+  const completePurchase = async () => {
     if (!activeReportId) {
       return;
     }
 
-    dispatch(markReportPurchased(activeReportId));
+    try {
+      await purchaseReport({reportCatalogId: activeReportId}).unwrap();
+    } catch {
+      trackEvent('reports_error', {
+        scope: 'checkout',
+        report_id: activeReportId,
+        reason: 'purchase_mutation_failed',
+      });
+    }
+
+    setLocalPurchasedReportIds(current =>
+      current.includes(activeReportId) ? current : [...current, activeReportId],
+    );
     setScreen('my_reports');
   };
 
@@ -99,6 +134,9 @@ export function App() {
         ) : screen === 'reports_marketplace' ? (
           <ReportsMarketplaceScreen
             reports={reportsCatalog}
+            isLoading={isCatalogLoading}
+            hasError={isCatalogError}
+            onRetry={refetchCatalog}
             onSelectReport={reportId => openReport(reportId, 'report_detail')}
             onClose={() => setScreen('home')}
           />
@@ -117,6 +155,9 @@ export function App() {
         ) : screen === 'my_reports' ? (
           <MyReportsScreen
             reports={purchasedReports}
+            isLoading={isPurchasedLoading}
+            hasError={isPurchasedError}
+            onRetry={refetchPurchased}
             onOpenReport={reportId => openReport(reportId, 'report_read')}
             onClose={() => setScreen('home')}
           />
