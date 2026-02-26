@@ -4,7 +4,7 @@
 `finalize_reconcile_job` concurrency davranışını gerçek RPC outcome’larına bağlamak ve nightly CI’ı assertion-fail odaklı çalıştırmak.
 
 Hedef metrikler:
-- outcome dağılımı: `applied:idempotent:stale_blocked:unknown`
+- outcome dağılımı: `applied:idempotent:stale_blocked`
 - stale conflict ratio
 - unknown fallback ratio
 - run-to-run trend notu (önceki run ile karşılaştırma)
@@ -13,7 +13,7 @@ Hedef metrikler:
 
 ## RLOOP-031 Delta
 
-### 1) Ephemeral schema + deterministic seed/teardown
+### 1) Harness wiring (RPC adapter contract)
 Script: `scripts/concurrency-harness-rloop029.sh`
 
 Yeni/özel akış:
@@ -27,10 +27,9 @@ Yeni/özel akış:
 - `SUPABASE_DB_URL` varsa `public.reconcile_jobs` deterministic upsert
 - `trap EXIT` ile drop schema garantisi (best-effort + warning)
 
-### 2) Production-like race input wiring
-- `HARNESS_AUTO_FIXTURE_INPUTS=1` default
-- fixture alanları env verilmezse otomatik deterministic üretilir
-- RPC payload bu fixture’lardan beslenir
+Command adapter contract:
+- `FINALIZE_RPC_ADAPTER_CMD` çıktısı JSON olmalı
+- Beklenen alan: `outcome` (`applied|idempotent|stale_blocked`)
 
 ### 3) Unknown fallback reduction + assertions
 - outcome extractor, error payload’ındaki stale/conflict ipuçlarını `stale_blocked`a sınıflandırır
@@ -57,15 +56,12 @@ Historical karşılaştırma:
 ## CI Integration
 Workflow: `.github/workflows/nightly-concurrency-harness.yml`
 
-Akış:
-1. install
-2. harness run (strict assertions)
-3. artifact upload (`*.json` + `history.ndjson`)
-4. optional webhook notify
+Trigger:
+- nightly schedule (UTC)
+- manual dispatch
 
 Secrets/vars:
 - Required (rpc_http): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- Optional seed/schema lifecycle: `SUPABASE_DB_URL`
 - Optional notify: `CONCURRENCY_HARNESS_WEBHOOK_URL`
 
 ---

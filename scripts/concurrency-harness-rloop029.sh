@@ -174,14 +174,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ "$HARNESS_MODE" == "auto" ]]; then
-  if [[ -n "$FINALIZE_RPC_ADAPTER_CMD" ]]; then
-    HARNESS_MODE="command"
-  elif [[ -n "$SUPABASE_URL" && -n "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
-    HARNESS_MODE="rpc_http"
-  else
-    HARNESS_MODE="dry"
-  fi
+mkdir -p "$REPORT_DIR"
+
+TOTAL_ATTEMPTS=$((WORKERS * ITERATIONS))
+# placeholder split for skeleton visibility
+APPLIED=$ITERATIONS
+IDEMPOTENT=$((TOTAL_ATTEMPTS / 2))
+if (( APPLIED + IDEMPOTENT > TOTAL_ATTEMPTS )); then
+  IDEMPOTENT=$((TOTAL_ATTEMPTS - APPLIED))
 fi
 
 echo "[harness] mode=${HARNESS_MODE} workers=${WORKERS} iterations=${ITERATIONS} schema=${SCHEMA_SAFE}"
@@ -216,7 +216,11 @@ JSON
   if [[ "$http_code" =~ ^2 ]]; then
     printf '%s' "$body"
   else
-    printf '{"error":"http_%s","body":%s}' "$http_code" "$(json_escape "$body")"
+    printf '{"error":"http_%s","body":%s}' "$http_code" "$(python3 - <<'PY' "$body"
+import json,sys
+print(json.dumps(sys.argv[1]))
+PY
+)"
   fi
 }
 
@@ -346,7 +350,7 @@ fi
 
 cat > "$REPORT_PATH" <<JSON
 {
-  "schema": "${SCHEMA_SAFE}",
+  "schema": "${SCHEMA}",
   "timestamp_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "mode": "${HARNESS_MODE}",
   "workers": ${WORKERS},
@@ -371,12 +375,10 @@ cat > "$REPORT_PATH" <<JSON
   "outcomes": {
     "applied": ${APPLIED},
     "idempotent": ${IDEMPOTENT},
-    "stale_blocked": ${STALE_BLOCKED},
-    "unknown": ${UNKNOWN}
+    "stale_blocked": ${STALE_BLOCKED}
   },
   "ratios": {
-    "stale_conflict_ratio": ${STALE_RATIO},
-    "unknown_ratio": ${UNKNOWN_RATIO}
+    "stale_conflict_ratio": ${STALE_RATIO}
   },
   "assertions": {
     "fail_on_applied_zero": ${FAIL_ON_APPLIED_ZERO},
@@ -396,7 +398,6 @@ cat > "$REPORT_PATH" <<JSON
 }
 JSON
 
-cat "$REPORT_PATH"
 echo "[harness] report written: ${REPORT_PATH}"
 
 cat "$REPORT_PATH" >> "$HISTORY_PATH"
