@@ -10,10 +10,13 @@ export type AlertDispatchEvent = {
   payload: Record<string, unknown>;
 };
 
+export type DispatchErrorClassification = 'retryable' | 'fatal' | 'unknown';
+
 export type DispatchAttemptResult = {
   success: boolean;
   statusCode?: number;
   errorMessage?: string;
+  errorClassification?: DispatchErrorClassification;
 };
 
 export type AlertChannelDispatcher = {
@@ -28,6 +31,8 @@ export type DeadLetterQueueRecord = {
   reason: string;
   attempts: number;
   failedAt: string;
+  lastErrorMessage?: string;
+  lastErrorClassification?: DispatchErrorClassification;
 };
 
 export type DeadLetterQueue = {
@@ -49,6 +54,14 @@ export type AlertDispatchMetrics = {
   dispatchSuccessCount: number;
   dispatchFailureCount: number;
   dispatchSuppressionHitCount: number;
+  dispatchRetryCount: number;
+};
+
+export type DispatchAttemptTelemetry = {
+  attempt: number;
+  latencyMs: number;
+  success: boolean;
+  failureClassification?: DispatchErrorClassification;
 };
 
 export type AlertDispatchTickResult = {
@@ -56,6 +69,7 @@ export type AlertDispatchTickResult = {
   suppressed: boolean;
   attempts: number;
   metrics: AlertDispatchMetrics;
+  attemptTelemetry: DispatchAttemptTelemetry[];
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -68,6 +82,31 @@ export const computeDispatchBackoffMs = (
   const safeAttempt = Math.max(1, attempt);
   const exponential = policy.baseBackoffMs * 2 ** (safeAttempt - 1);
   return clamp(exponential, policy.baseBackoffMs, policy.maxBackoffMs);
+};
+
+export const classifyDispatchError = (
+  result: DispatchAttemptResult,
+): DispatchErrorClassification => {
+  if (result.errorClassification) {
+    return result.errorClassification;
+  }
+
+  if (typeof result.statusCode === 'number') {
+    if (result.statusCode === 429 || result.statusCode >= 500) {
+      return 'retryable';
+    }
+
+    if (result.statusCode >= 400) {
+      return 'fatal';
+    }
+  }
+
+  const message = result.errorMessage?.toLowerCase() ?? '';
+  if (message.includes('timeout') || message.includes('temporar') || message.includes('network')) {
+    return 'retryable';
+  }
+
+  return 'unknown';
 };
 
 const shouldSuppress = async (
@@ -100,13 +139,17 @@ export const runAlertDispatcherTick = async (
     deadLetterQueue: DeadLetterQueue;
     policy: DispatchWorkerPolicy;
     sleep?: (ms: number) => Promise<void>;
+    nowMs?: () => number;
   },
 ): Promise<AlertDispatchTickResult> => {
   const metrics: AlertDispatchMetrics = {
     dispatchSuccessCount: 0,
     dispatchFailureCount: 0,
     dispatchSuppressionHitCount: 0,
+    dispatchRetryCount: 0,
   };
+  const attemptTelemetry: DispatchAttemptTelemetry[] = [];
+  const nowMs = deps.nowMs ?? Date.now;
 
   if (await shouldSuppress(event, deps.suppressionStore)) {
     metrics.dispatchSuppressionHitCount += 1;
@@ -115,15 +158,27 @@ export const runAlertDispatcherTick = async (
       suppressed: true,
       attempts: 0,
       metrics,
+      attemptTelemetry,
     };
   }
 
   const channel = inferChannel(event.route);
   const dispatcher = deps.dispatchers[channel];
+  let finalReason = 'dispatch_failed_max_retries_exhausted';
+  let lastErrorMessage: string | undefined;
+  let lastErrorClassification: DispatchErrorClassification = 'unknown';
 
   for (let attempt = 1; attempt <= deps.policy.maxAttempts; attempt += 1) {
+    const startedAt = nowMs();
     const result = await dispatcher.dispatch(event);
+    const latencyMs = Math.max(0, nowMs() - startedAt);
+
     if (result.success) {
+      attemptTelemetry.push({
+        attempt,
+        latencyMs,
+        success: true,
+      });
       metrics.dispatchSuccessCount += 1;
       await deps.suppressionStore.setLastSentAt(event.dedupKey, new Date().toISOString());
       return {
@@ -131,10 +186,28 @@ export const runAlertDispatcherTick = async (
         suppressed: false,
         attempts: attempt,
         metrics,
+        attemptTelemetry,
       };
     }
 
+    const classification = classifyDispatchError(result);
+    attemptTelemetry.push({
+      attempt,
+      latencyMs,
+      success: false,
+      failureClassification: classification,
+    });
+
+    lastErrorClassification = classification;
+    lastErrorMessage = result.errorMessage;
+
+    if (classification === 'fatal') {
+      finalReason = 'dispatch_failed_fatal';
+      break;
+    }
+
     if (attempt < deps.policy.maxAttempts && deps.sleep) {
+      metrics.dispatchRetryCount += 1;
       await deps.sleep(computeDispatchBackoffMs(attempt, deps.policy));
     }
   }
@@ -144,9 +217,11 @@ export const runAlertDispatcherTick = async (
     eventId: event.eventId,
     dedupKey: event.dedupKey,
     route: event.route,
-    reason: 'dispatch_failed_max_retries_exhausted',
+    reason: finalReason,
     attempts: deps.policy.maxAttempts,
     failedAt: new Date().toISOString(),
+    lastErrorMessage,
+    lastErrorClassification,
   });
 
   return {
@@ -154,19 +229,24 @@ export const runAlertDispatcherTick = async (
     suppressed: false,
     attempts: deps.policy.maxAttempts,
     metrics,
+    attemptTelemetry,
   };
 };
 
-export const createSlackDispatcher = (
+export const createSlackTransportDispatcher = (
   dispatch: (event: AlertDispatchEvent) => Promise<DispatchAttemptResult>,
 ): AlertChannelDispatcher => ({
   channel: 'slack',
   dispatch,
 });
 
-export const createWebhookDispatcher = (
+export const createWebhookTransportDispatcher = (
   dispatch: (event: AlertDispatchEvent) => Promise<DispatchAttemptResult>,
 ): AlertChannelDispatcher => ({
   channel: 'webhook',
   dispatch,
 });
+
+// Backward-compatible names from RLOOP-040 draft.
+export const createSlackDispatcher = createSlackTransportDispatcher;
+export const createWebhookDispatcher = createWebhookTransportDispatcher;
