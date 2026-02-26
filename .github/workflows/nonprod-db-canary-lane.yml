@@ -24,6 +24,7 @@ on:
 
 jobs:
   nonprod-db-canary:
+    name: lane / nonprod-db-canary
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -153,85 +154,16 @@ jobs:
             reports/canary/history/nonprod-db-canary-history.ndjson
 
   nonprod-db-canary-live-publish:
+    name: required-check / nonprod-live-publish-gate
     needs: [nonprod-db-canary]
     if: ${{ needs.nonprod-db-canary.outputs.requested_publisher_mode == 'live' && github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: canary-publisher-live
-    env:
-      RUN_DIR: reports/canary/nonprod/${{ github.run_id }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Download canary artifact bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: nonprod-db-canary-${{ github.run_id }}
-          path: .
-
-      - name: Live publish runtime
-        env:
-          CANARY_PUBLISHER_MODE: live
-          CANARY_DRIFT_POLICY: ${{ github.event.inputs.drift_policy || 'warn' }}
-          RLOOP054_CANARY_SUMMARY_PATH: reports/canary/nonprod/${{ github.run_id }}/canary-summary.json
-          RLOOP054_HEAD_SHA: ${{ github.sha }}
-          RLOOP054_ISSUE_NUMBER: "54"
-          RLOOP054_BOT_LOGIN: "github-actions[bot]"
-          RLOOP055_TELEMETRY_OUT: reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry.json
-        run: |
-          yarn test __tests__/canaryPublisherRuntime.e2e.rloop054.test.ts --runInBand
-
-      - name: Assert telemetry coverage for live mode
-        env:
-          RLOOP055_TELEMETRY_POLICY: ${{ github.event.inputs.live_telemetry_policy || 'fail' }}
-          RLOOP055_TELEMETRY_PATH: reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry.json
-          RLOOP055_TELEMETRY_ASSERTION_MD: reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry-assertion.md
-        run: |
-          node scripts/assert-live-telemetry-rloop055.js
-
-      - name: Build live gate check-run summary
-        if: always()
-        run: |
-          mkdir -p "$RUN_DIR"
-          SUMMARY_FILE="$RUN_DIR/live-publish-check-summary.md"
-          {
-            echo "# Non-prod Canary Live Publish Gate Summary"
-            echo
-            echo '- Environment gate: `canary-publisher-live`'
-            echo '- Approval path: manual environment protection'
-            echo '- Requested mode: `${{ needs.nonprod-db-canary.outputs.requested_publisher_mode }}`'
-            echo '- Telemetry policy: `${{ github.event.inputs.live_telemetry_policy || '"'"'fail'"'"' }}`'
-            echo "- Live publish job result: **${{ job.status }}**"
-            echo
-            if [ -f "$RUN_DIR/publisher-telemetry-assertion.md" ]; then
-              echo "## Telemetry Assertion"
-              tail -n +2 "$RUN_DIR/publisher-telemetry-assertion.md"
-            else
-              echo "## Telemetry Assertion"
-              echo "- Telemetry assertion report not found."
-            fi
-          } > "$SUMMARY_FILE"
-
-          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload live publish artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nonprod-db-canary-live-${{ github.run_id }}
-          path: |
-            reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry.json
-            reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry-assertion.md
-            reports/canary/nonprod/${{ github.run_id }}/live-publish-check-summary.md
+    uses: ./.github/workflows/nonprod-db-canary-live-publish-reusable.yml
+    with:
+      run_dir: reports/canary/nonprod/${{ github.run_id }}
+      drift_policy: ${{ github.event.inputs.drift_policy || 'warn' }}
+      telemetry_policy: ${{ github.event.inputs.live_telemetry_policy || 'fail' }}
+      requested_publisher_mode: ${{ needs.nonprod-db-canary.outputs.requested_publisher_mode }}
+      head_sha: ${{ github.sha }}
+      issue_number: "54"
+      bot_login: "github-actions[bot]"
+    secrets: inherit

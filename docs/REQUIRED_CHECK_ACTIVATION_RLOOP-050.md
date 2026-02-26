@@ -2,15 +2,17 @@
 
 ## Scope
 
-Canary lane (`nonprod-db-canary`) için required-check'e geçiş planı ve drift policy transition çerçevesi.
+Canary lane (`nonprod-db-canary`) ve live publish gate için required-check activation/migration planı.
 
 ## Check Surface Contract
 
-### Check Name (stable)
+### Canonical Check Names (stable)
 
-- `nonprod-db-canary / drift`
+- `nonprod-db-canary / drift` *(publisher check-run adı)*
+- `CI Quality Gates / required-check / ci-quality-gates` *(branch protection required)*
+- `Non-prod DB Canary Lane / required-check / nonprod-live-publish-gate` *(conditional gate; default required değil)*
 
-Bu isim branch protection'da required check olarak referanslanacağı için immutable kabul edilir.
+Bu isimler branch protection referanslarında immutable kabul edilir.
 
 ### Status Mapping
 
@@ -21,7 +23,7 @@ Bu isim branch protection'da required check olarak referanslanacağı için immu
 | drift_detected | fail | failure | yes |
 | infra_error | warn/fail | failure | yes |
 
-> Not: `infra_error` her zaman fail edilir; çünkü sinyal güvenilirliği bozulmuştur.
+> Not: `infra_error` her zaman fail edilir; sinyal güvenilirliği bozulmuştur.
 
 ## Progressive Activation (Warn -> Fail)
 
@@ -53,12 +55,17 @@ Bu isim branch protection'da required check olarak referanslanacağı için immu
 
 ## Branch Protection Plan
 
-1. GitHub branch protection'da `master` için required status checks listesine:
-   - `nonprod-db-canary / drift`
+1. `master` için required status checks listesinde en az:
+   - `CI Quality Gates / required-check / ci-quality-gates`
 2. `Require branches to be up to date` açık tutulur.
-3. Geçiş gününde policy `fail` yapılır.
-4. İlk hafta rollback switch hazır tutulur:
-   - Policy geçici olarak `warn`a alınabilir.
+3. Drift gate enforcement gününde `CANARY_DRIFT_POLICY=fail` yapılır.
+4. İlk hafta rollback switch hazır tutulur (`warn`).
+
+### Migration for Renamed Contexts (RLOOP-057)
+
+1. Geçici olarak hem eski hem yeni context'i ekle
+2. 1-2 başarılı PR sonrasında eski context'i kaldır
+3. Final list'i `docs/BRANCH_PROTECTION_SETUP.md` ile eşitle
 
 ## Rollback Strategy
 
@@ -67,18 +74,16 @@ Bu isim branch protection'da required check olarak referanslanacağı için immu
   2. Required check temporary disable veya bypass window uygula
   3. Incident sonrası tekrar Phase 1'e dön
 
-## RLOOP-051 Draft Wiring Update
-
-RLOOP-051 ile check publisher için kod tarafı iskeleti hazırlanmıştır.
+## RLOOP-051+ Wiring Notes
 
 - Check payload builder: `src/features/reliability/canaryCheckPublisher.ts`
 - Sticky comment strategy: marker tabanlı single-comment upsert
 - Runtime config resolver: `src/features/reliability/canaryCheckPublisherConfig.ts`
+- Reusable live publish workflow (RLOOP-057):
+  - `.github/workflows/nonprod-db-canary-live-publish-reusable.yml`
 
 Runtime env knobs:
 
 - `CANARY_DRIFT_POLICY=warn|fail`
 - `CANARY_CHECK_NAME` (default: `nonprod-db-canary / drift`)
 - `CANARY_STICKY_COMMENT_ENABLED=true|false`
-
-> Not: Bu iterasyonda API client çağrıları intentionally skeleton seviyesindedir; workflow publish step bağlantısı RLOOP-052 scope'una önerilmiştir.
