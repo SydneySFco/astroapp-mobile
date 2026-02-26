@@ -25,6 +25,13 @@ export type RetryDecision = {
   nextStatus: ReconcileJobStatus;
 };
 
+export type FinalizeOutcome = 'applied' | 'idempotent' | 'stale_blocked';
+
+export type FinalizeResult = {
+  outcome: FinalizeOutcome;
+  decision: RetryDecision | null;
+};
+
 const BASE_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 30 * 60_000;
 const JITTER_RATIO = 0.2;
@@ -73,13 +80,13 @@ export type ReconcileJobRepository = {
   markSucceeded: (
     job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
     finishedAt: string,
-  ) => Promise<void>;
+  ) => Promise<FinalizeOutcome>;
   markFailed: (
     job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
     errorCode: string,
     errorMessage: string,
     decision: RetryDecision,
-  ) => Promise<void>;
+  ) => Promise<FinalizeOutcome>;
 };
 
 export type DeadLetterReplayHook = (
@@ -109,10 +116,13 @@ export const finalizeReconcileJob = async (
   input: ReconcileFinalizeInput,
   now = new Date(),
   options?: FinalizeReconcileJobOptions,
-): Promise<RetryDecision | null> => {
+): Promise<FinalizeResult> => {
   if (input.result === 'succeeded') {
-    await repository.markSucceeded(job, now.toISOString());
-    return null;
+    const outcome = await repository.markSucceeded(job, now.toISOString());
+    return {
+      outcome,
+      decision: null,
+    };
   }
 
   const failedInput = input;
@@ -125,19 +135,26 @@ export const finalizeReconcileJob = async (
     now,
   );
 
-  await repository.markFailed(
+  const outcome = await repository.markFailed(
     job,
     failedInput.errorCode,
     failedInput.errorMessage,
     decision,
   );
 
-  if (decision.nextStatus === 'dead_lettered' && options?.onDeadLettered) {
+  if (
+    outcome === 'applied' &&
+    decision.nextStatus === 'dead_lettered' &&
+    options?.onDeadLettered
+  ) {
     await options.onDeadLettered(job, {
       errorCode: failedInput.errorCode,
       errorMessage: failedInput.errorMessage,
     });
   }
 
-  return decision;
+  return {
+    outcome,
+    decision,
+  };
 };

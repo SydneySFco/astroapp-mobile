@@ -1,7 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 
 import {supabase} from '../../services/supabase/client';
-import type {RetryDecision} from './reconcileWorker';
+import type {FinalizeOutcome, RetryDecision} from './reconcileWorker';
 import type {
   ReconcileAdminReadModel,
   ReconcileJobOpsViewRow,
@@ -18,6 +18,23 @@ const CLAIM_RPC = 'claim_reconcile_job';
 const FINALIZE_RPC = 'finalize_reconcile_job';
 const AUDIT_TABLE = 'reconcile_audit_log';
 
+type FinalizeRpcRow = {
+  outcome: FinalizeOutcome;
+  job: ReconcileJobRow | null;
+};
+
+const pickFinalizeRpcRow = (data: unknown): FinalizeRpcRow | null => {
+  if (!data) {
+    return null;
+  }
+
+  if (Array.isArray(data)) {
+    return (data[0] as FinalizeRpcRow | undefined) ?? null;
+  }
+
+  return data as FinalizeRpcRow;
+};
+
 const finalizeWithLease = async (
   client: SupabaseClient,
   input: {
@@ -30,8 +47,8 @@ const finalizeWithLease = async (
     retryAfter?: string;
     finishedAt?: string;
   },
-): Promise<void> => {
-  const {error} = await client.rpc(FINALIZE_RPC, {
+): Promise<FinalizeOutcome> => {
+  const {data, error} = await client.rpc(FINALIZE_RPC, {
     p_job_id: input.jobId,
     p_lease_token: input.leaseToken ?? null,
     p_lease_revision: input.leaseRevision,
@@ -45,6 +62,14 @@ const finalizeWithLease = async (
   if (error) {
     throw error;
   }
+
+  const row = pickFinalizeRpcRow(data);
+
+  if (!row?.outcome) {
+    throw new Error('finalize_reconcile_job RPC returned no outcome');
+  }
+
+  return row.outcome;
 };
 
 export const createSupabaseReconcileJobRepository = (
@@ -67,7 +92,7 @@ export const createSupabaseReconcileJobRepository = (
   },
 
   markSucceeded: async (job, finishedAt) => {
-    await finalizeWithLease(client, {
+    return finalizeWithLease(client, {
       jobId: job.id,
       leaseToken: job.leaseToken,
       leaseRevision: job.leaseRevision,
@@ -80,7 +105,7 @@ export const createSupabaseReconcileJobRepository = (
     const resultStatus =
       decision.nextStatus === 'dead_lettered' ? 'dead_lettered' : 'queued';
 
-    await finalizeWithLease(client, {
+    return finalizeWithLease(client, {
       jobId: job.id,
       leaseToken: job.leaseToken,
       leaseRevision: job.leaseRevision,
