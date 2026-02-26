@@ -12,8 +12,6 @@ export type ReconcileJob = {
   attemptCount: number;
   maxAttempts: number;
   leasedUntil?: string;
-  leaseToken?: string;
-  leaseRevision: number;
   retryAfter?: string;
   lastErrorCode?: string;
   lastErrorMessage?: string;
@@ -75,7 +73,7 @@ export type ReconcileJobRepository = {
     finishedAt: string,
   ) => Promise<void>;
   markFailed: (
-    job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
+    jobId: string,
     errorCode: string,
     errorMessage: string,
     decision: RetryDecision,
@@ -102,10 +100,7 @@ export type ReconcileFinalizeInput =
 
 export const finalizeReconcileJob = async (
   repository: ReconcileJobRepository,
-  job: Pick<
-    ReconcileJob,
-    'id' | 'reportId' | 'attemptCount' | 'maxAttempts' | 'leaseToken' | 'leaseRevision'
-  >,
+  job: Pick<ReconcileJob, 'id' | 'reportId' | 'attemptCount' | 'maxAttempts'>,
   input: ReconcileFinalizeInput,
   now = new Date(),
   options?: FinalizeReconcileJobOptions,

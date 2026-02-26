@@ -15,7 +15,6 @@ import {mapReconcileJobRowToDomain} from './reconcileJobRepository';
 const JOB_TABLE = 'reconcile_jobs';
 const OPS_VIEW = 'reconcile_job_ops_view';
 const CLAIM_RPC = 'claim_reconcile_job';
-const FINALIZE_RPC = 'finalize_reconcile_job';
 const AUDIT_TABLE = 'reconcile_audit_log';
 
 const finalizeWithLease = async (
@@ -76,9 +75,17 @@ export const createSupabaseReconcileJobRepository = (
     });
   },
 
-  markFailed: async (job, errorCode, errorMessage, decision: RetryDecision) => {
-    const resultStatus =
-      decision.nextStatus === 'dead_lettered' ? 'dead_lettered' : 'queued';
+  markFailed: async (jobId, errorCode, errorMessage, decision: RetryDecision) => {
+    const {error} = await client
+      .from(JOB_TABLE)
+      .update({
+        status: decision.nextStatus,
+        leased_until: null,
+        retry_after: decision.nextRetryAfter ?? null,
+        last_error_code: errorCode,
+        last_error_message: errorMessage,
+      })
+      .eq('id', jobId);
 
     await finalizeWithLease(client, {
       jobId: job.id,
@@ -100,7 +107,6 @@ export const createSupabaseReconcileJobRepository = (
       .update({
         status: 'queued',
         leased_until: null,
-        lease_token: null,
         retry_after: null,
         last_error_code: input.reasonCode,
         last_error_message: input.reasonMessage,
