@@ -3,22 +3,45 @@ import {Pressable, StyleSheet, Text, View} from 'react-native';
 
 import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
-import {Report} from '../features/reports/reportsSlice';
+import {ReportListItem} from '../features/reports/reportsApi';
 import {colors} from '../theme/colors';
 
 type Props = {
-  reports: Report[];
+  reports: ReportListItem[];
+  isLoading?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   onSelectReport: (reportId: string) => void;
   onClose: () => void;
 };
 
-export function ReportsMarketplaceScreen({reports, onSelectReport, onClose}: Props) {
+export function ReportsMarketplaceScreen({
+  reports,
+  isLoading = false,
+  hasError = false,
+  onRetry,
+  onSelectReport,
+  onClose,
+}: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Rapor Marketi</Text>
       <Text style={styles.subtitle}>Kendin için en uygun raporu seç, ön izle ve satın al.</Text>
 
-      {reports.length === 0 ? (
+      {isLoading ? (
+        <ScreenState
+          mode="loading"
+          title="Raporlar yükleniyor"
+          description="Market verisi getiriliyor, lütfen bekle."
+        />
+      ) : hasError ? (
+        <ScreenState
+          mode="error"
+          title="Raporlar alınamadı"
+          description="Bağlantı veya servis sorunu olabilir. Tekrar deneyebilirsin."
+          onRetry={onRetry}
+        />
+      ) : reports.length === 0 ? (
         <ScreenState
           mode="empty"
           title="Henüz rapor bulunmuyor"
@@ -36,7 +59,7 @@ export function ReportsMarketplaceScreen({reports, onSelectReport, onClose}: Pro
               }}>
               <Text style={styles.cardTitle}>{report.title}</Text>
               <Text style={styles.cardDescription}>{report.shortDescription}</Text>
-              <Text style={styles.price}>₺{report.price}</Text>
+              <Text style={styles.price}>{`${report.currency} ${report.price}`}</Text>
             </Pressable>
           ))}
         </View>
