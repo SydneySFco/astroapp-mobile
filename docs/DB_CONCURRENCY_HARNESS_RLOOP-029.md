@@ -1,4 +1,4 @@
-# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-030 update)
+# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-031 update)
 
 ## Purpose
 `finalize_reconcile_job` concurrency davranışını gerçek RPC outcome’larına bağlamak ve nightly CI’ı assertion-fail odaklı çalıştırmak.
@@ -6,85 +6,54 @@
 Hedef metrikler:
 - outcome dağılımı: `applied:idempotent:stale_blocked`
 - stale conflict ratio
+- unknown fallback ratio
 - run-to-run trend notu (önceki run ile karşılaştırma)
 
 ---
 
-## RLOOP-030 Delta
+## RLOOP-031 Delta
 
 ### 1) Harness wiring (RPC adapter contract)
 Script: `scripts/concurrency-harness-rloop029.sh`
 
-Adapter modları:
-- `HARNESS_MODE=rpc_http`: Supabase REST RPC endpoint’i üzerinden gerçek çağrı
-- `HARNESS_MODE=command`: external adapter command (JSON outcome contract)
-- `HARNESS_MODE=dry`: deterministic dry fallback
-- `HARNESS_MODE=auto` (default): env’e göre otomatik seçim
+Yeni/özel akış:
+- safe schema naming (`SCHEMA_SAFE`)
+- `HARNESS_USE_EPHEMERAL_SCHEMA=1` ise run başında create schema
+- deterministic seed key üretimi (`HARNESS_SEED_NAMESPACE`, workload, timestamp)
+- deterministic fixture auto wiring:
+  - `HARNESS_JOB_ID`
+  - `HARNESS_LEASE_TOKEN`
+  - `HARNESS_LEASE_REVISION`
+- `SUPABASE_DB_URL` varsa `public.reconcile_jobs` deterministic upsert
+- `trap EXIT` ile drop schema garantisi (best-effort + warning)
 
 Command adapter contract:
 - `FINALIZE_RPC_ADAPTER_CMD` çıktısı JSON olmalı
 - Beklenen alan: `outcome` (`applied|idempotent|stale_blocked`)
 
-Not:
-- Gerçek seed/schema lifecycle hâlen ayrı migration/fixture katmanına ihtiyaç duyar.
-- Bu iterasyonda outcome sayımı artık mümkün olduğunda gerçek RPC response’una bağlıdır.
+### 3) Unknown fallback reduction + assertions
+- outcome extractor, error payload’ındaki stale/conflict ipuçlarını `stale_blocked`a sınıflandırır
+- yeni guard:
+  - `FAIL_ON_UNKNOWN_RATIO_BREACH=1`
+  - `UNKNOWN_RATIO_FAIL_THRESHOLD=0.0500`
 
-### 2) Strict CI assertions
-Aşağıdaki breach durumlarında job fail edilir:
-- `applied_count == 0 && total_attempts > 0` (`FAIL_ON_APPLIED_ZERO=1`)
-- `stale_conflict_ratio >= STALE_RATIO_FAIL_THRESHOLD` (`FAIL_ON_THRESHOLD_BREACH=1`)
+Breach durumlarında job fail edilir:
+- `applied_count == 0 && total_attempts > 0`
+- `stale_conflict_ratio >= STALE_RATIO_FAIL_THRESHOLD`
+- `unknown_ratio >= UNKNOWN_RATIO_FAIL_THRESHOLD`
 
-Varsayılan fail threshold:
-- `STALE_RATIO_FAIL_THRESHOLD=0.3000`
-
-### 3) Artifact + trend standard
-Standart JSON raporu:
-```json
-{
-  "schema": "harness_20260226_133700_ab12",
-  "timestamp_utc": "2026-02-26T13:37:00Z",
-  "mode": "rpc_http",
-  "workers": 20,
-  "iterations": 5,
-  "total_attempts": 100,
-  "outcomes": {
-    "applied": 5,
-    "idempotent": 60,
-    "stale_blocked": 35,
-    "unknown": 0
-  },
-  "ratios": {
-    "stale_conflict_ratio": 0.35,
-    "unknown_ratio": 0
-  },
-  "assertions": {
-    "fail_on_applied_zero": 1,
-    "fail_on_threshold_breach": 1,
-    "stale_ratio_fail_threshold": 0.30,
-    "applied_zero_breach": 0,
-    "threshold_breach": 1,
-    "job_status": "fail"
-  },
-  "trend": {
-    "previous_stale_conflict_ratio": 0.21,
-    "note": "compared_to_previous_run"
-  }
-}
-```
+### 4) JSON report metadata
+Standart rapora eklendi:
+- `seed.*` (namespace/key/job/lease/revision/seed_sql_applied)
+- `schema_lifecycle.*` (ephemeral enabled/create/drop durumu)
 
 Historical karşılaştırma:
 - Script, `reports/concurrency-harness-history.ndjson` dosyasına her run raporunu append eder.
 - `trend.previous_stale_conflict_ratio` alanı son run’dan okunur.
 
-### 4) Notifications draft
-Workflow’de opsiyonel webhook adımı eklendi:
-- secret: `CONCURRENCY_HARNESS_WEBHOOK_URL`
-- varsa kısa status payload gönderilir (Slack incoming webhook dahil uyumlu)
-
 ---
 
-## CI Integration Draft
-
+## CI Integration
 Workflow: `.github/workflows/nightly-concurrency-harness.yml`
 
 Trigger:
@@ -97,7 +66,6 @@ Secrets/vars:
 
 ---
 
-## Remaining follow-up (RLOOP-031 adayı)
-- Ephemeral schema create/seed/drop adımlarını gerçek DB fixture katmanıyla tamamlamak
-- Job seed + lease ownership setup’ını harness içine almak
-- Trend baseline’ı repo artifact’ından kalıcı storage’a taşımak (S3/TSDB)
+## Remaining follow-up (RLOOP-032 adayı)
+- Gerçek paralel finalize yarışı (background process/fan-out) ve p95 latency/sequence telemetry
+- Ephemeral schema isolation’ı function/search_path seviyesinde gerçek DB sandbox’a genişletmek
