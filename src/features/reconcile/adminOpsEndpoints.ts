@@ -133,13 +133,10 @@ export const replayReconcileJobHandler = async (
 
   const reasonCode = parseOptionalString(req.body?.reasonCode) ?? 'ADMIN_REPLAY_REQUESTED';
   const reasonMessage = parseOptionalString(req.body?.reasonMessage) ?? 'Replay requested by admin ops endpoint';
-  const requestedBy = parseOptionalString(req.body?.requestedBy);
-
   const replay = await deps.repository.replay({
     jobId,
     reasonCode,
     reasonMessage,
-    requestedBy,
   });
 
   return {
