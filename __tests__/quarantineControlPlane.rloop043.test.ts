@@ -1,5 +1,6 @@
 import {
   computeQuarantineRates,
+  createQuarantineAdminMetricEvent,
   dropQuarantinedHandler,
   getQuarantinedDetailHandler,
   listQuarantinedHandler,
@@ -130,5 +131,24 @@ describe('RLOOP-043 quarantine control plane skeleton', () => {
 
     expect(rates.redriveSuccessRate).toBeCloseTo(0.6);
     expect(rates.dropRate).toBeCloseTo(0.15);
+  });
+
+  it('builds admin action metric payload with action/outcome/reason dimensions', () => {
+    const metric = createQuarantineAdminMetricEvent({
+      action: 'redrive',
+      outcome: 'accepted',
+      reason: 'approved_by_oncall',
+      replayId: 'r-5',
+      requestId: 'req-1',
+      observedAt: '2026-02-26T14:40:00.000Z',
+    });
+
+    expect(metric.metric).toBe('replay_quarantine_admin_action_total');
+    expect(metric.dimensions).toEqual({
+      action: 'redrive',
+      outcome: 'accepted',
+      reason: 'approved_by_oncall',
+    });
+    expect(metric.requestId).toBe('req-1');
   });
 });

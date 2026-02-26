@@ -295,7 +295,43 @@ export const quarantineMetricNames = {
   volume: 'replay_quarantine_volume_total',
   redriveSuccessRate: 'replay_quarantine_redrive_success_rate',
   dropRate: 'replay_quarantine_drop_rate',
+  adminActionTotal: 'replay_quarantine_admin_action_total',
+  idempotencyDedupedTotal: 'replay_quarantine_idempotency_deduped_total',
+  staleConflictTotal: 'replay_quarantine_stale_conflict_total',
 } as const;
+
+export type QuarantineAdminMetricEvent = {
+  metric: typeof quarantineMetricNames.adminActionTotal;
+  value: number;
+  dimensions: {
+    action: 'redrive' | 'drop';
+    outcome: 'accepted' | 'deduped' | 'stale_conflict' | 'rejected';
+    reason: string;
+  };
+  requestId?: string;
+  replayId: string;
+  observedAt: string;
+};
+
+export const createQuarantineAdminMetricEvent = (input: {
+  action: 'redrive' | 'drop';
+  outcome: 'accepted' | 'deduped' | 'stale_conflict' | 'rejected';
+  reason: string;
+  replayId: string;
+  requestId?: string;
+  observedAt?: string;
+}): QuarantineAdminMetricEvent => ({
+  metric: quarantineMetricNames.adminActionTotal,
+  value: 1,
+  dimensions: {
+    action: input.action,
+    outcome: input.outcome,
+    reason: input.reason,
+  },
+  requestId: input.requestId,
+  replayId: input.replayId,
+  observedAt: input.observedAt ?? new Date().toISOString(),
+});
 
 export const computeQuarantineRates = (input: {
   quarantinedCount: number;
