@@ -193,10 +193,38 @@ Mapping (UI lifecycle):
 - `report_realtime_subscription`
 - `reports_retry` içinde `retry_count`
 
+## RLOOP-019 Server-side Authority + Realtime Reliability Plan Update
+
+### Lifecycle transition guard policy (backend)
+`user_reports.status` için backend trigger/policy tarafında aşağıdaki invalid transition'lar bloklanmalı:
+
+- `queued -> ready`
+- `processing -> queued`
+- `ready -> queued`
+- `ready -> processing`
+
+Allowed transitions:
+- `queued -> queued|processing`
+- `processing -> processing|ready`
+- `ready -> ready`
+
+Client tarafı defensive guard uygular; ancak **final authority backend** kalır.
+
+### Realtime reliability hardening
+- Subscription drop durumları (`CLOSED|TIMED_OUT|CHANNEL_ERROR`) için reconnect + backoff (`1s,2s,4s,8s,15s`) uygulanmalı.
+- Out-of-order event riskine karşı payload tarafında `updated_at` ve mümkünse `version` alanı sağlanmalı.
+- Client stale event'leri ignore eder; backend'de de monoton güncelleme (trigger check) önerilir.
+
+### Telemetry coverage (RLOOP-019)
+Ek metrikler:
+- reconnect attempts
+- subscription drops
+- stale event ignored
+
 ## Open Items
 
 1. SQL migration scripts hazırlanmalı.
 2. Trigger: `auth.users` -> `profiles` otomatik create (opsiyonel ama önerilir).
 3. Payment provider webhooks + service role güvenlik modeli netleştirilmeli.
 4. Report generation pipeline (queue/edge function) tasarlanmalı.
-5. Realtime payload’ları için DB trigger tabanlı telemetry enrichment (opsiyonel).
+5. `user_reports` için transition guard trigger + optional `version` increment mekanizması uygulanmalı.

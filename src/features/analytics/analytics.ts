@@ -21,7 +21,10 @@ type AnalyticsEventName =
   | 'settings_retry'
   | 'report_lifecycle_transition'
   | 'report_lifecycle_ready'
-  | 'report_realtime_subscription';
+  | 'report_realtime_subscription'
+  | 'report_realtime_subscription_drop'
+  | 'report_realtime_reconnect_attempt'
+  | 'report_realtime_stale_event_ignored';
 
 type AnalyticsPayload = Record<string, string | number | boolean>;
 
