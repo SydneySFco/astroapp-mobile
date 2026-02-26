@@ -2,11 +2,11 @@ import React, {useEffect} from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
 import {trackEvent} from '../features/analytics/analytics';
-import {Report} from '../features/reports/reportsSlice';
+import {ReportListItem} from '../features/reports/reportsApi';
 import {colors} from '../theme/colors';
 
 type Props = {
-  report: Report;
+  report: ReportListItem;
   onBuy: () => void;
   onBack: () => void;
 };
@@ -23,7 +23,7 @@ export function ReportDetailScreen({report, onBuy, onBack}: Props) {
       <Text style={styles.preview}>{report.preview}</Text>
 
       <View style={styles.footerCard}>
-        <Text style={styles.price}>Fiyat: ₺{report.price}</Text>
+        <Text style={styles.price}>{`Fiyat: ${report.currency} ${report.price}`}</Text>
         <Pressable style={styles.buyButton} onPress={onBuy}>
           <Text style={styles.buyButtonText}>Satın Al</Text>
         </Pressable>

@@ -1,11 +1,11 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
-import {Report} from '../features/reports/reportsSlice';
+import {ReportListItem} from '../features/reports/reportsApi';
 import {colors} from '../theme/colors';
 
 type Props = {
-  report: Report;
+  report: ReportListItem;
   onBack: () => void;
 };
 
@@ -13,7 +13,7 @@ export function ReportReadScreen({report, onBack}: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{report.title}</Text>
-      <Text style={styles.content}>{report.fullContent}</Text>
+      <Text style={styles.content}>{report.preview}</Text>
 
       <Pressable onPress={onBack}>
         <Text style={styles.backText}>Raporlarıma dön</Text>
