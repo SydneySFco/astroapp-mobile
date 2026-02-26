@@ -143,33 +143,35 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 'auto',
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
   secondaryButton: {
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: colors.textSecondary,
+    color: colors.ctaSecondaryText,
     fontWeight: '700',
   },
   warningButton: {
-    backgroundColor: '#4C2740',
+    backgroundColor: colors.stateErrorBg,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   warningButtonText: {
-    color: '#FFC3D9',
+    color: colors.error,
     fontWeight: '700',
   },
   successText: {

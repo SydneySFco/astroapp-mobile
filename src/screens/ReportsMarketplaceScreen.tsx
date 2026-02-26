@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
     padding: 14,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   price: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontWeight: '700',
     marginTop: 4,
   },

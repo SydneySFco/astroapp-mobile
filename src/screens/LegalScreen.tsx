@@ -76,18 +76,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   linkUrl: {
-    color: '#7FA4FF',
+    color: colors.accent,
     textDecorationLine: 'underline',
   },
   primaryButton: {
     marginTop: 'auto',
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
 });

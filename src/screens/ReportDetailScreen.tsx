@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   subtitle: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontWeight: '700',
   },
   preview: {
@@ -57,14 +57,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     padding: 12,
   },
   footerCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     padding: 12,
     gap: 10,
   },
@@ -74,13 +74,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   buyButton: {
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   buyButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '800',
   },
   backText: {

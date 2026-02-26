@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderRadius: 10,
     color: colors.textPrimary,
     paddingHorizontal: 12,
@@ -120,13 +120,13 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 8,
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
   error: {
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   link: {
-    color: '#8EA2FF',
+    color: colors.primary,
     marginTop: 8,
     textAlign: 'center',
   },

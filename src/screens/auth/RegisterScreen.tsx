@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderRadius: 10,
     color: colors.textPrimary,
     paddingHorizontal: 12,
@@ -362,22 +362,22 @@ const styles = StyleSheet.create({
   },
   intentOption: {
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: 'transparent',
   },
   intentOptionActive: {
-    backgroundColor: '#4A63F5',
-    borderColor: '#4A63F5',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   intentText: {
     color: colors.textSecondary,
     fontSize: 13,
   },
   intentTextActive: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
   row: {
@@ -387,24 +387,26 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
   secondaryButton: {
     flex: 1,
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: colors.textSecondary,
+    color: colors.ctaSecondaryText,
     fontWeight: '700',
   },
   error: {
@@ -416,18 +418,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   link: {
-    color: '#8EA2FF',
+    color: colors.primary,
     marginTop: 8,
     textAlign: 'center',
   },
   summaryBox: {
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderRadius: 10,
     padding: 12,
     gap: 6,
-    backgroundColor: '#1B2240',
+    backgroundColor: colors.primarySoft,
   },
   summaryLabel: {
     color: colors.textPrimary,

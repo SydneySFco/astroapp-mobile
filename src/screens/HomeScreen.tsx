@@ -81,23 +81,25 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 12,
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '700',
   },
   secondaryButton: {
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.card,
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: colors.textSecondary,
+    color: colors.ctaSecondaryText,
     fontWeight: '700',
   },
 });

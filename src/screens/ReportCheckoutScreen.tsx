@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   price: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontWeight: '700',
     fontSize: 16,
   },
@@ -162,23 +162,25 @@ const styles = StyleSheet.create({
   primaryButton: {
     flex: 1,
     borderRadius: 10,
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '800',
   },
   secondaryButton: {
     flex: 1,
     borderRadius: 10,
-    backgroundColor: '#2B355D',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: colors.textSecondary,
+    color: colors.ctaSecondaryText,
     fontWeight: '700',
   },
   resultText: {
@@ -191,17 +193,17 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   cancelText: {
-    color: '#E5CC7B',
+    color: colors.warning,
   },
   retryButton: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#4A63F5',
+    borderColor: colors.primary,
     paddingVertical: 12,
     alignItems: 'center',
   },
   retryButtonText: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontWeight: '700',
   },
   backText: {

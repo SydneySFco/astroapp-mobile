@@ -39,7 +39,7 @@ export function ScreenState({mode, title, description, retryLabel = 'Tekrar Dene
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
@@ -52,19 +52,19 @@ const styles = StyleSheet.create({
     height: 14,
     width: '92%',
     borderRadius: 8,
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.border,
   },
   skeletonLineMd: {
     height: 14,
     width: '72%',
     borderRadius: 8,
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.border,
   },
   skeletonLineSm: {
     height: 14,
     width: '56%',
     borderRadius: 8,
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.border,
   },
   title: {
     color: colors.textPrimary,
@@ -77,14 +77,14 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     alignSelf: 'flex-start',
-    borderColor: '#4A63F5',
+    borderColor: colors.primary,
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   retryText: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontWeight: '700',
   },
 });

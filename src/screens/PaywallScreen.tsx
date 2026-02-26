@@ -193,14 +193,14 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     backgroundColor: colors.card,
     padding: 12,
     gap: 4,
   },
   planCardActive: {
-    borderColor: '#4A63F5',
-    backgroundColor: '#1D2750',
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   planName: {
     color: colors.textPrimary,
@@ -212,13 +212,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   badge: {
-    color: '#9FB0FF',
+    color: colors.accent,
     fontSize: 12,
     fontWeight: '700',
   },
   valueBox: {
     borderWidth: 1,
-    borderColor: '#2B355D',
+    borderColor: colors.border,
     borderRadius: 12,
     padding: 12,
     gap: 8,
@@ -229,17 +229,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   primaryButton: {
-    backgroundColor: '#4A63F5',
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: colors.textPrimary,
+    color: colors.ctaPrimaryText,
     fontWeight: '800',
   },
   restoreText: {
-    color: '#8EA2FF',
+    color: colors.primary,
     textAlign: 'center',
     fontWeight: '700',
   },
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   cancelText: {
-    color: '#E5CC7B',
+    color: colors.warning,
   },
   resultActions: {
     flexDirection: 'row',
@@ -262,13 +262,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   resultButton: {
-    backgroundColor: '#2B355D',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   resultButtonText: {
-    color: colors.textSecondary,
+    color: colors.ctaSecondaryText,
     fontWeight: '700',
   },
   backText: {
