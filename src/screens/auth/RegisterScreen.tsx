@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useDispatch} from 'react-redux';
 
 import {ScreenState} from '../../components/ScreenState';
@@ -10,6 +10,7 @@ import {StateBanner} from '../../components/ui/StateBanner';
 import {trackEvent} from '../../features/analytics/analytics';
 import {useRegisterMutation} from '../../features/auth/authApi';
 import {setOnboardingComplete} from '../../features/onboarding/onboardingSlice';
+import {fontFamilies} from '../../theme/typography';
 import {useTheme} from '../../theme/ThemeProvider';
 
 type Props = {
@@ -171,6 +172,78 @@ export function RegisterScreen({onGoLogin}: Props) {
     );
   }
 
+  if (step === 4) {
+    return (
+      <View style={styles.birthScreen}>
+        <View style={styles.birthAppBar}>
+          <Pressable onPress={onPrev} style={styles.appBarBackButton}>
+            <Text style={styles.appBarBackText}>←</Text>
+          </Pressable>
+          <Text style={styles.birthAppBarTitle}>Birth Details</Text>
+          <Text style={styles.stepChip}>4/5</Text>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.birthContent}>
+          <Text style={styles.birthTitle}>Let's find your cosmic blueprint</Text>
+          <Text style={styles.subtitle}>Kişisel haritanı doğru hesaplamak için doğum verilerini net girelim.</Text>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Date of Birth</Text>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>◷</Text>
+              <Input
+                placeholder="DD / MM / YYYY"
+                value={birthDate}
+                onChangeText={setBirthDate}
+                style={styles.fieldInput}
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <View style={styles.timeHeaderRow}>
+              <Text style={styles.fieldLabel}>Time of Birth</Text>
+              <Pressable
+                style={[styles.unknownTimeToggle, unknownBirthTime && styles.unknownTimeToggleActive]}
+                onPress={() => setUnknownBirthTime(current => !current)}>
+                <Text style={[styles.unknownTimeText, unknownBirthTime && styles.unknownTimeTextActive]}>
+                  Unknown time
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>◔</Text>
+              <Input
+                placeholder="--:--"
+                style={[styles.fieldInput, unknownBirthTime ? styles.disabledInput : undefined]}
+                value={birthTime}
+                onChangeText={setBirthTime}
+                editable={!unknownBirthTime}
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Place of Birth</Text>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>⌖</Text>
+              <Input placeholder="City" value={city} onChangeText={setCity} style={styles.fieldInput} />
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>◎</Text>
+              <Input placeholder="Country" value={country} onChangeText={setCountry} style={styles.fieldInput} />
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={styles.stickyFooter}>
+          {stepError ? <StateBanner tone="error" description={stepError} /> : null}
+          <Button label="Continue" onPress={onNext} disabled={isLoading} style={styles.stickyButton} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <Card style={styles.card}>
       <Text style={styles.title}>Kayıt Ol</Text>
@@ -201,63 +274,6 @@ export function RegisterScreen({onGoLogin}: Props) {
 
       {step === 3 ? (
         <Input placeholder="Şifre" value={password} onChangeText={setPassword} secureTextEntry style={styles.tallInput} />
-      ) : null}
-
-      {step === 4 ? (
-        <View style={styles.groupLarge}>
-          <Text style={styles.birthTitle}>Let's find your cosmic blueprint</Text>
-          <Text style={styles.subtitle}>
-            Kişisel haritanı doğru hesaplamak için doğum verilerini net girelim.
-          </Text>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Date of Birth</Text>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldIcon}>☷</Text>
-              <Input
-                placeholder="DD / MM / YYYY"
-                value={birthDate}
-                onChangeText={setBirthDate}
-                style={styles.fieldInput}
-              />
-            </View>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <View style={styles.timeHeaderRow}>
-              <Text style={styles.fieldLabel}>Time of Birth</Text>
-              <Pressable
-                style={[styles.unknownTimeToggle, unknownBirthTime && styles.unknownTimeToggleActive]}
-                onPress={() => setUnknownBirthTime(current => !current)}>
-                <Text style={[styles.unknownTimeText, unknownBirthTime && styles.unknownTimeTextActive]}>
-                  Unknown time
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldIcon}>◷</Text>
-              <Input
-                placeholder="--:--"
-                style={[styles.fieldInput, unknownBirthTime ? styles.disabledInput : undefined]}
-                value={birthTime}
-                onChangeText={setBirthTime}
-                editable={!unknownBirthTime}
-              />
-            </View>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Place of Birth</Text>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldIcon}>⌖</Text>
-              <Input placeholder="City" value={city} onChangeText={setCity} style={styles.fieldInput} />
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldIcon}>⌂</Text>
-              <Input placeholder="Country" value={country} onChangeText={setCountry} style={styles.fieldInput} />
-            </View>
-          </View>
-        </View>
       ) : null}
 
       {step === 5 ? (
@@ -320,19 +336,20 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     title: {
       color: colors.textPrimary,
       fontSize: 24,
-      fontWeight: '700',
+      fontFamily: fontFamilies.heading,
       letterSpacing: -0.2,
     },
     stepIndicator: {
       color: colors.textSecondary,
       fontSize: 13,
       marginBottom: 6,
-      fontWeight: '600',
+      fontFamily: fontFamilies.bodyMedium,
     },
     subtitle: {
       color: colors.textSecondary,
       fontSize: 13,
       lineHeight: 20,
+      fontFamily: fontFamilies.body,
     },
     tallInput: {
       minHeight: 54,
@@ -345,32 +362,75 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     group: {
       gap: 8,
     },
-    groupLarge: {
-      gap: 12,
-      paddingVertical: 4,
+    birthScreen: {
+      flex: 1,
+      backgroundColor: '#0F0F23',
+      marginHorizontal: -22,
+      marginVertical: -18,
+    },
+    birthAppBar: {
+      minHeight: 56,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#252A4D',
+      backgroundColor: '#151935',
+    },
+    appBarBackButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#212751',
+    },
+    appBarBackText: {
+      color: '#F4F6FF',
+      fontSize: 18,
+      marginTop: -1,
+    },
+    birthAppBarTitle: {
+      color: '#F5F7FF',
+      fontSize: 16,
+      fontFamily: fontFamilies.heading,
+    },
+    stepChip: {
+      color: '#AEB7DE',
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyBold,
+      minWidth: 34,
+      textAlign: 'right',
+    },
+    birthContent: {
+      paddingHorizontal: 16,
+      paddingTop: 18,
+      paddingBottom: 120,
+      gap: 14,
     },
     birthTitle: {
-      color: colors.textPrimary,
-      fontSize: 28,
-      lineHeight: 34,
-      fontWeight: '800',
-      letterSpacing: -0.4,
+      color: '#F5F7FF',
+      fontSize: 30,
+      lineHeight: 36,
+      fontFamily: fontFamilies.display,
+      letterSpacing: -0.5,
     },
     fieldGroup: {
-      gap: 6,
+      gap: 8,
     },
     fieldLabel: {
-      color: colors.textPrimary,
+      color: '#E6EBFF',
       fontSize: 13,
-      fontWeight: '700',
+      fontFamily: fontFamilies.bodyBold,
       marginLeft: 2,
     },
     fieldRow: {
-      minHeight: 54,
+      minHeight: 56,
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
+      borderColor: '#28305A',
+      backgroundColor: '#1A2148',
       flexDirection: 'row',
       alignItems: 'center',
       paddingLeft: 12,
@@ -378,7 +438,7 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       gap: 8,
     },
     fieldIcon: {
-      color: colors.textSecondary,
+      color: '#95A1C8',
       fontSize: 14,
       width: 18,
       textAlign: 'center',
@@ -391,6 +451,7 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       paddingHorizontal: 0,
       paddingVertical: 0,
       backgroundColor: 'transparent',
+      color: '#EAF0FF',
     },
     timeHeaderRow: {
       flexDirection: 'row',
@@ -399,28 +460,46 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     },
     unknownTimeToggle: {
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: '#30396A',
       borderRadius: 999,
       paddingHorizontal: 10,
       paddingVertical: 4,
-      backgroundColor: colors.card,
+      backgroundColor: '#1A2148',
     },
     unknownTimeToggleActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primarySoft,
+      borderColor: '#7A7AFF',
+      backgroundColor: '#232A58',
     },
     unknownTimeText: {
-      color: colors.textSecondary,
+      color: '#A7B2DA',
       fontSize: 11,
-      fontWeight: '700',
+      fontFamily: fontFamilies.bodyBold,
     },
     unknownTimeTextActive: {
-      color: colors.primary,
+      color: '#AFA5FF',
+    },
+    stickyFooter: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: '#151935',
+      borderTopWidth: 1,
+      borderTopColor: '#252A4D',
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 12,
+      gap: 8,
+    },
+    stickyButton: {
+      minHeight: 52,
+      borderRadius: 12,
+      backgroundColor: '#7A7AFF',
     },
     intentHeader: {
       color: colors.textPrimary,
       fontSize: 15,
-      fontWeight: '700',
+      fontFamily: fontFamilies.bodyBold,
     },
     intentOption: {
       borderWidth: 1,
@@ -437,10 +516,11 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     intentText: {
       color: colors.textSecondary,
       fontSize: 13,
+      fontFamily: fontFamilies.body,
     },
     intentTextActive: {
       color: colors.ctaPrimaryText,
-      fontWeight: '700',
+      fontFamily: fontFamilies.bodyBold,
     },
     row: {
       flexDirection: 'row',
@@ -457,7 +537,7 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       color: colors.primary,
       marginTop: 8,
       textAlign: 'center',
-      fontWeight: '600',
+      fontFamily: fontFamilies.bodyBold,
     },
     summaryBox: {
       marginTop: 8,
@@ -466,10 +546,12 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     summaryLabel: {
       color: colors.textPrimary,
       fontSize: 14,
+      fontFamily: fontFamilies.body,
     },
     recommendation: {
       color: colors.textSecondary,
       marginTop: 8,
       lineHeight: 20,
+      fontFamily: fontFamilies.body,
     },
   });

@@ -1,5 +1,5 @@
 import React, {useMemo, useState} from 'react';
-import {SafeAreaView, StatusBar, StyleSheet, Text} from 'react-native';
+import {SafeAreaView, StatusBar, StyleSheet, Text, View} from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
 
 import {trackEvent} from '../features/analytics/analytics';
@@ -32,6 +32,8 @@ type AppScreen =
   | 'settings'
   | 'legal';
 
+type MainTab = 'home' | 'reports' | 'tribes' | 'settings';
+
 export function App() {
   const dispatch = useDispatch();
   const {colors, preference, setPreference, resolvedMode} = useTheme();
@@ -40,6 +42,7 @@ export function App() {
   const purchasedReportIds = useSelector((state: RootState) => state.reports.purchasedReportIds);
 
   const [screen, setScreen] = useState<AppScreen>('home');
+  const [activeTab, setActiveTab] = useState<MainTab>('home');
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
 
   const activeReport = useMemo(
@@ -63,12 +66,34 @@ export function App() {
     }
 
     dispatch(markReportPurchased(activeReportId));
+    setActiveTab('reports');
     setScreen('my_reports');
   };
 
   const openSettings = () => {
     trackEvent('settings_view');
+    setActiveTab('settings');
     setScreen('settings');
+  };
+
+  const onChangeTab = (tab: MainTab) => {
+    setActiveTab(tab);
+    if (tab === 'home') {
+      setScreen('home');
+      return;
+    }
+
+    if (tab === 'reports') {
+      setScreen('my_reports');
+      return;
+    }
+
+    if (tab === 'settings') {
+      openSettings();
+      return;
+    }
+
+    setScreen('home');
   };
 
   const logout = async () => {
@@ -76,6 +101,7 @@ export function App() {
     dispatch(setPremium(false));
     dispatch(setOnboardingComplete(false));
     setScreen('home');
+    setActiveTab('home');
   };
 
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -89,9 +115,14 @@ export function App() {
       {onboardingComplete ? (
         screen === 'home' ? (
           <HomeScreen
+            activeTab={activeTab}
+            onChangeTab={onChangeTab}
             onOpenPaywall={() => setScreen('paywall')}
             onOpenReportsMarketplace={() => setScreen('reports_marketplace')}
-            onOpenMyReports={() => setScreen('my_reports')}
+            onOpenMyReports={() => {
+              setActiveTab('reports');
+              setScreen('my_reports');
+            }}
             onOpenSettings={openSettings}
           />
         ) : screen === 'paywall' ? (
@@ -132,12 +163,9 @@ export function App() {
         ) : screen === 'legal' ? (
           <LegalScreen onBack={() => setScreen('settings')} />
         ) : (
-          <HomeScreen
-            onOpenPaywall={() => setScreen('paywall')}
-            onOpenReportsMarketplace={() => setScreen('reports_marketplace')}
-            onOpenMyReports={() => setScreen('my_reports')}
-            onOpenSettings={openSettings}
-          />
+          <View style={styles.centerFallback}>
+            <Text style={styles.fallbackText}>Coming soon</Text>
+          </View>
         )
       ) : (
         <AuthFlowScreen />
@@ -158,5 +186,14 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontSize: 11,
       color: colors.textSecondary,
       paddingBottom: 8,
+    },
+    centerFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fallbackText: {
+      color: colors.textSecondary,
+      fontSize: 16,
     },
   });

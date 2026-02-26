@@ -160,3 +160,38 @@ Changes were constrained to parity-only styling/layout updates in in-file `Style
 - Reference web exports use external image assets and Material Symbols; native app still uses local placeholder glyphs for icons/imagery.
 - Exact font family parity (Space Grotesk / Manrope) is still approximate unless bundled at app level.
 - Bottom navigation in Home remains visual-level parity; full navigator architecture change is intentionally out of scope for this iteration.
+
+---
+
+## Iteration-3 (Birth Data Dedicated Screen + Navigator Behavior + Asset-backed Hero)
+
+### A) Birth Data Input dedicated screen pattern
+- Converted register Step-4 to a dedicated full-screen composition inside onboarding flow:
+  - Added top app bar (`Back`, centered title, progress chip `4/5`)
+  - Added sticky bottom CTA container with persistent `Continue`
+  - Kept validation and unknown-time logic intact while moving error banner near CTA
+- IA parity improvements:
+  - Strong section headline + grouped labeled input stacks
+  - Stable field sizing/radii and icon-leading rows aligned with previous parity targets
+
+### B) Typography token lock (where feasible)
+- Added `src/theme/typography.ts` for consistent usage targets:
+  - `SpaceGrotesk-*` for display/headings
+  - `Manrope-*` for body and UI text
+- Applied typography tokens across high-visibility fidelity screens (`AuthFlowScreen`, `HomeScreen`, `RegisterScreen`) as a non-breaking token layer.
+
+### C) Home bottom-nav behavior (minimal safe real navigation)
+- Upgraded visual-only bottom nav to actual behavior wiring:
+  - Home tab state is now controlled in `src/app/App.tsx`
+  - Bottom tab presses route to existing screen flows (`home`, `my_reports`, `settings`)
+  - Added safe fallback for non-implemented tab destination (`tribes`) to avoid dead tap with no feedback
+
+### D) Welcome/Home hero assets
+- Added generated local raster assets for stronger visual fidelity:
+  - `src/assets/images/welcome-hero-bg.png`
+  - `src/assets/images/home-hero-nebula.png`
+- Replaced pure glow placeholders with `ImageBackground` usage in Welcome and Home hero blocks.
+
+### E) Known residual gaps after Iteration-3
+- Exact branded icon pack (Material/brand vectors) still not bundled; glyph-based substitutes remain for some controls.
+- Font files are now tokenized but still require actual native font bundling/config to achieve true typographic parity.

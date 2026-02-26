@@ -1,22 +1,29 @@
 import React from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {ImageBackground, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
 
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
 import {RootState} from '../store/store';
+import {fontFamilies} from '../theme/typography';
+
+type TabKey = 'home' | 'reports' | 'tribes' | 'settings';
 
 type Props = {
+  activeTab: TabKey;
   onOpenPaywall: () => void;
   onOpenReportsMarketplace: () => void;
   onOpenMyReports: () => void;
   onOpenSettings: () => void;
+  onChangeTab: (tab: TabKey) => void;
 };
 
 export function HomeScreen({
+  activeTab,
   onOpenPaywall,
   onOpenReportsMarketplace,
   onOpenMyReports,
   onOpenSettings,
+  onChangeTab,
 }: Props) {
   const dispatch = useDispatch();
   const isPremium = useSelector((state: RootState) => state.subscription.isPremium);
@@ -25,7 +32,7 @@ export function HomeScreen({
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Pressable style={styles.headerIconButton} onPress={onOpenSettings}>
-          <Text style={styles.headerIcon}>☰</Text>
+          <Text style={styles.headerIcon}>≡</Text>
         </Pressable>
 
         <View style={styles.headerCenter}>
@@ -34,7 +41,7 @@ export function HomeScreen({
         </View>
 
         <View style={styles.headerIconButton}>
-          <Text style={styles.headerIcon}>◷</Text>
+          <Text style={styles.headerIcon}>◔</Text>
         </View>
       </View>
 
@@ -45,11 +52,11 @@ export function HomeScreen({
         </View>
 
         <View style={styles.heroCard}>
-          <View style={styles.heroImageArea}>
-            <View style={styles.heroImageGlow} />
+          <ImageBackground source={require('../assets/images/home-hero-nebula.png')} style={styles.heroImageArea} imageStyle={styles.heroImageStyle}>
+            <View style={styles.heroOverlay} />
             <Text style={styles.heroBadge}>HOROSCOPE</Text>
             <Text style={styles.heroTitle}>The Moon Enters Pisces</Text>
-          </View>
+          </ImageBackground>
 
           <View style={styles.heroBody}>
             <Text style={styles.heroDescription}>
@@ -67,7 +74,9 @@ export function HomeScreen({
         <View style={styles.grid}>
           <View style={styles.metricCard}>
             <View style={styles.metricTopRow}>
-              <Text style={styles.metricSymbol}>◔</Text>
+              <View style={styles.metricIconWrap}>
+                <Text style={styles.metricSymbol}>◔</Text>
+              </View>
               <Text style={styles.metricTag}>PHASE</Text>
             </View>
             <Text style={styles.metricTitle}>Waxing Gibbous</Text>
@@ -76,7 +85,9 @@ export function HomeScreen({
 
           <View style={styles.metricCard}>
             <View style={styles.metricTopRow}>
-              <Text style={styles.metricSymbol}>◈</Text>
+              <View style={styles.metricIconWrap}>
+                <Text style={styles.metricSymbol}>◈</Text>
+              </View>
               <Text style={styles.metricTag}>CRYSTAL</Text>
             </View>
             <Text style={styles.metricTitle}>Amethyst</Text>
@@ -114,14 +125,23 @@ export function HomeScreen({
           onPress={() => dispatch(setOnboardingComplete(false))}>
           <Text style={styles.resetButtonText}>Demo için onboarding'e dön</Text>
         </Pressable>
-
-        <View style={styles.bottomNav}>
-          <Text style={styles.bottomNavActive}>Home</Text>
-          <Text style={styles.bottomNavItem}>Reports</Text>
-          <Text style={styles.bottomNavItem}>Tribes</Text>
-          <Text style={styles.bottomNavItem}>Settings</Text>
-        </View>
       </ScrollView>
+
+      <View style={styles.bottomNav}>
+        {[
+          {label: 'Home', key: 'home'},
+          {label: 'Reports', key: 'reports'},
+          {label: 'Tribes', key: 'tribes'},
+          {label: 'Settings', key: 'settings'},
+        ].map(item => {
+          const selected = activeTab === item.key;
+          return (
+            <Pressable key={item.key} onPress={() => onChangeTab(item.key as TabKey)} style={styles.bottomNavButton}>
+              <Text style={selected ? styles.bottomNavActive : styles.bottomNavItem}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -149,14 +169,14 @@ const styles = StyleSheet.create({
   headerLabel: {
     color: '#8C2BEE',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   headerTitle: {
     color: '#FFFFFF',
     fontSize: 17,
-    fontWeight: '700',
+    fontFamily: fontFamilies.heading,
   },
   headerIconButton: {
     width: 38,
@@ -186,14 +206,14 @@ const styles = StyleSheet.create({
   dateTitle: {
     color: '#FFFFFF',
     fontSize: 32,
-    fontWeight: '800',
+    fontFamily: fontFamilies.display,
     lineHeight: 36,
   },
   dateSubtitle: {
     color: '#9B90B0',
     fontSize: 15,
     marginTop: 4,
-    fontWeight: '600',
+    fontFamily: fontFamilies.bodyMedium,
   },
   heroCard: {
     borderRadius: 12,
@@ -201,11 +221,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#322840',
     backgroundColor: '#231B2E',
-    shadowColor: '#000000',
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.24,
-    shadowRadius: 16,
-    elevation: 8,
   },
   heroImageArea: {
     minHeight: 148,
@@ -213,16 +228,13 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 14,
     justifyContent: 'flex-end',
-    backgroundColor: '#312449',
   },
-  heroImageGlow: {
-    position: 'absolute',
-    top: -10,
-    left: -30,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(140,43,238,0.24)',
+  heroImageStyle: {
+    opacity: 0.95,
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(31,22,46,0.35)',
   },
   heroBadge: {
     alignSelf: 'flex-start',
@@ -232,7 +244,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#8C2BEE',
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: fontFamilies.bodyBold,
     letterSpacing: 0.8,
     marginBottom: 6,
   },
@@ -240,7 +252,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 24,
     lineHeight: 28,
-    fontWeight: '800',
+    fontFamily: fontFamilies.display,
   },
   heroBody: {
     paddingHorizontal: 14,
@@ -252,6 +264,7 @@ const styles = StyleSheet.create({
     color: '#C8BED7',
     fontSize: 13,
     lineHeight: 20,
+    fontFamily: fontFamilies.body,
   },
   heroButton: {
     minHeight: 44,
@@ -261,16 +274,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
-    shadowColor: '#8C2BEE',
-    shadowOffset: {width: 0, height: 6},
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
   },
   heroButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
   },
   heroButtonArrow: {
     color: '#FFFFFF',
@@ -301,31 +309,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  metricIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(140,43,238,0.2)',
+  },
   metricSymbol: {
-    color: '#8C2BEE',
-    fontSize: 15,
+    color: '#CBA4FF',
+    fontSize: 12,
   },
   metricTag: {
     color: '#80718F',
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
     letterSpacing: 1,
   },
   metricTitle: {
     color: '#FFFFFF',
     fontSize: 17,
     lineHeight: 20,
-    fontWeight: '700',
+    fontFamily: fontFamilies.heading,
   },
   metricValue: {
     color: '#A86BF1',
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: fontFamilies.bodyMedium,
   },
   metricSub: {
     color: '#9A8FAF',
     fontSize: 11,
     lineHeight: 16,
+    fontFamily: fontFamilies.body,
   },
   tipCard: {
     borderRadius: 12,
@@ -356,13 +373,14 @@ const styles = StyleSheet.create({
   tipTitle: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: fontFamilies.bodyBold,
     marginBottom: 2,
   },
   tipBody: {
     color: '#B9A7CD',
     fontSize: 12,
     lineHeight: 18,
+    fontFamily: fontFamilies.body,
   },
   navButton: {
     minHeight: 46,
@@ -376,7 +394,7 @@ const styles = StyleSheet.create({
   navButtonText: {
     color: '#ECE7F5',
     fontSize: 14,
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
   },
   primaryButton: {
     minHeight: 48,
@@ -388,11 +406,11 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '800',
+    fontFamily: fontFamilies.bodyBold,
   },
   premiumInfo: {
     color: '#76E39B',
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -403,25 +421,30 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: '#8D7CFF',
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: fontFamilies.bodyMedium,
   },
   bottomNav: {
-    marginTop: 6,
     borderTopWidth: 1,
     borderTopColor: '#2E253A',
     paddingTop: 10,
-    paddingBottom: 6,
+    paddingBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-around',
+    backgroundColor: '#191022',
+  },
+  bottomNavButton: {
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bottomNavActive: {
     color: '#8C2BEE',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: fontFamilies.bodyBold,
   },
   bottomNavItem: {
     color: '#7F7394',
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: fontFamilies.bodyMedium,
   },
 });

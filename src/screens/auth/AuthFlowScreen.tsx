@@ -1,6 +1,7 @@
 import React, {useMemo, useState} from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {ImageBackground, Pressable, StyleSheet, Text, View} from 'react-native';
 
+import {fontFamilies} from '../../theme/typography';
 import {useTheme} from '../../theme/ThemeProvider';
 import {ForgotPasswordScreen} from './ForgotPasswordScreen';
 import {LoginScreen} from './LoginScreen';
@@ -33,10 +34,10 @@ export function AuthFlowScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.heroVisual}>
+          <ImageBackground source={require('../../assets/images/welcome-hero-bg.png')} style={styles.heroVisual} imageStyle={styles.heroImageStyle}>
             <View style={styles.heroInnerGlow} />
             <View style={styles.heroOverlay} />
-          </View>
+          </ImageBackground>
 
           <View style={styles.heroTextBlock}>
             <Text style={styles.heroTitle}>Your Path,{"\n"}Written in the Stars</Text>
@@ -140,7 +141,7 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
     },
     brandName: {
       color: '#FFFFFF',
-      fontWeight: '700',
+      fontFamily: fontFamilies.heading,
       fontSize: 22,
       letterSpacing: -0.2,
     },
@@ -163,15 +164,12 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       borderRadius: 24,
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.06)',
-      backgroundColor: '#181738',
       overflow: 'hidden',
       marginTop: 4,
       marginBottom: 10,
-      shadowColor: '#7A7AFF',
-      shadowOffset: {width: 0, height: 12},
-      shadowOpacity: 0.16,
-      shadowRadius: 24,
-      elevation: 8,
+    },
+    heroImageStyle: {
+      opacity: 0.95,
     },
     heroInnerGlow: {
       position: 'absolute',
@@ -180,11 +178,11 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       right: 24,
       bottom: 32,
       borderRadius: 999,
-      backgroundColor: 'rgba(122,122,255,0.18)',
+      backgroundColor: 'rgba(122,122,255,0.22)',
     },
     heroOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(8,10,28,0.58)',
+      backgroundColor: 'rgba(8,10,28,0.42)',
     },
     heroTextBlock: {
       alignItems: 'center',
@@ -198,7 +196,7 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       lineHeight: 48,
       textAlign: 'center',
       color: '#F8F9FF',
-      fontWeight: '700',
+      fontFamily: fontFamilies.display,
       letterSpacing: -0.8,
     },
     heroDescription: {
@@ -207,7 +205,7 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       textAlign: 'center',
       color: '#9CA3BF',
       maxWidth: 320,
-      fontWeight: '300',
+      fontFamily: fontFamilies.body,
     },
     welcomeActions: {
       gap: 16,
@@ -231,7 +229,7 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
     getStartedText: {
       color: '#F7F9FF',
       fontSize: 18,
-      fontWeight: '600',
+      fontFamily: fontFamilies.bodyBold,
       letterSpacing: 0.2,
     },
     getStartedArrow: {
@@ -243,11 +241,11 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       textAlign: 'center',
       color: '#6D738C',
       fontSize: 12,
-      fontWeight: '500',
+      fontFamily: fontFamilies.bodyMedium,
     },
     loginLinkStrong: {
       color: '#7A7AFF',
-      fontWeight: '600',
+      fontFamily: fontFamilies.bodyBold,
     },
     authContent: {
       flex: 1,
