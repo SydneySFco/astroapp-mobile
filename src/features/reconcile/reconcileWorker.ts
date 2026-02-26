@@ -12,6 +12,8 @@ export type ReconcileJob = {
   attemptCount: number;
   maxAttempts: number;
   leasedUntil?: string;
+  leaseToken?: string;
+  leaseRevision: number;
   retryAfter?: string;
   lastErrorCode?: string;
   lastErrorMessage?: string;
@@ -21,6 +23,13 @@ export type RetryDecision = {
   shouldRetry: boolean;
   nextRetryAfter?: string;
   nextStatus: ReconcileJobStatus;
+};
+
+export type FinalizeOutcome = 'applied' | 'idempotent' | 'stale_blocked';
+
+export type FinalizeResult = {
+  outcome: FinalizeOutcome;
+  decision: RetryDecision | null;
 };
 
 const BASE_BACKOFF_MS = 30_000;
@@ -68,13 +77,16 @@ export const toRetryDecision = (
 
 export type ReconcileJobRepository = {
   claimNext: (leaseDurationMs: number) => Promise<ReconcileJob | null>;
-  markSucceeded: (jobId: string, finishedAt: string) => Promise<void>;
+  markSucceeded: (
+    job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
+    finishedAt: string,
+  ) => Promise<FinalizeOutcome>;
   markFailed: (
-    jobId: string,
+    job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
     errorCode: string,
     errorMessage: string,
     decision: RetryDecision,
-  ) => Promise<void>;
+  ) => Promise<FinalizeOutcome>;
 };
 
 export type DeadLetterReplayHook = (
@@ -97,14 +109,20 @@ export type ReconcileFinalizeInput =
 
 export const finalizeReconcileJob = async (
   repository: ReconcileJobRepository,
-  job: Pick<ReconcileJob, 'id' | 'reportId' | 'attemptCount' | 'maxAttempts'>,
+  job: Pick<
+    ReconcileJob,
+    'id' | 'reportId' | 'attemptCount' | 'maxAttempts' | 'leaseToken' | 'leaseRevision'
+  >,
   input: ReconcileFinalizeInput,
   now = new Date(),
   options?: FinalizeReconcileJobOptions,
-): Promise<RetryDecision | null> => {
+): Promise<FinalizeResult> => {
   if (input.result === 'succeeded') {
-    await repository.markSucceeded(job.id, now.toISOString());
-    return null;
+    const outcome = await repository.markSucceeded(job, now.toISOString());
+    return {
+      outcome,
+      decision: null,
+    };
   }
 
   const failedInput = input;
@@ -117,19 +135,26 @@ export const finalizeReconcileJob = async (
     now,
   );
 
-  await repository.markFailed(
-    job.id,
+  const outcome = await repository.markFailed(
+    job,
     failedInput.errorCode,
     failedInput.errorMessage,
     decision,
   );
 
-  if (decision.nextStatus === 'dead_lettered' && options?.onDeadLettered) {
+  if (
+    outcome === 'applied' &&
+    decision.nextStatus === 'dead_lettered' &&
+    options?.onDeadLettered
+  ) {
     await options.onDeadLettered(job, {
       errorCode: failedInput.errorCode,
       errorMessage: failedInput.errorMessage,
     });
   }
 
-  return decision;
+  return {
+    outcome,
+    decision,
+  };
 };

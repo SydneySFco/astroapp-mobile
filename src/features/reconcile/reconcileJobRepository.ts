@@ -7,6 +7,8 @@ export type ReconcileJobRow = {
   attempt_count: number;
   max_attempts: number;
   leased_until: string | null;
+  lease_token: string | null;
+  lease_revision: number;
   retry_after: string | null;
   last_error_code: string | null;
   last_error_message: string | null;
@@ -17,7 +19,9 @@ export type ReconcileJobReplayInput = {
   jobId: string;
   reasonCode: string;
   reasonMessage: string;
-  requestedBy?: string;
+  actorId: string;
+  reason: string;
+  approvalRef: string;
 };
 
 export type ReconcileJobReplayResult = {
@@ -39,6 +43,8 @@ export const mapReconcileJobRowToDomain = (row: ReconcileJobRow): ReconcileJob =
   attemptCount: row.attempt_count,
   maxAttempts: row.max_attempts,
   leasedUntil: row.leased_until ?? undefined,
+  leaseToken: row.lease_token ?? undefined,
+  leaseRevision: row.lease_revision,
   retryAfter: row.retry_after ?? undefined,
   lastErrorCode: row.last_error_code ?? undefined,
   lastErrorMessage: row.last_error_message ?? undefined,
@@ -51,6 +57,8 @@ export type ReconcileJobOpsViewRow = {
   attempt_count: number;
   max_attempts: number;
   leased_until: string | null;
+  lease_token: string | null;
+  lease_revision: number;
   retry_after: string | null;
   last_error_code: string | null;
   last_error_message: string | null;
