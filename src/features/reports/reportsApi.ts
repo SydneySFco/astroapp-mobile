@@ -12,9 +12,12 @@ export type ReportListItem = {
   currency: string;
 };
 
+export type ReportLifecycleStatus = 'queued' | 'processing' | 'ready';
+
 export type ReportDetail = ReportListItem & {
   fullContent: string;
   purchased: boolean;
+  lifecycleStatus: ReportLifecycleStatus;
 };
 
 export type PurchasedReport = {
@@ -43,9 +46,18 @@ type SupabaseReportCatalogRow = {
 type SupabaseUserReportRow = {
   report_catalog_id: string;
   created_at: string;
+  updated_at: string | null;
+  version: number | null;
   title: string | null;
   summary: string | null;
   content_json: unknown;
+  status: ReportLifecycleStatus | 'archived';
+};
+
+type SupabaseReportOrderStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+
+type SupabaseReportOrderRow = {
+  status: SupabaseReportOrderStatus;
 };
 
 const fallbackCatalog: ReportListItem[] = [
@@ -93,6 +105,47 @@ const mapUserReportContent = (content: unknown): string => {
   return 'Rapor içeriği hazırlanıyor.';
 };
 
+const withTimeout = async <T>(promise: Promise<T>, ms = 10000): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
+const mapSupabaseErrorStatus = (message: string): 401 | 403 | 500 => {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('jwt') || normalized.includes('unauthorized') || normalized.includes('auth')) {
+    return 401;
+  }
+
+  if (normalized.includes('permission') || normalized.includes('forbidden') || normalized.includes('rls')) {
+    return 403;
+  }
+
+  return 500;
+};
+
+const mapOrderToLifecycleStatus = (orderStatus: SupabaseReportOrderStatus | null): ReportLifecycleStatus => {
+  if (!orderStatus || orderStatus === 'pending' || orderStatus === 'failed') {
+    return 'queued';
+  }
+
+  return orderStatus === 'paid' ? 'processing' : 'ready';
+};
+
+const isOrderAccessibleForRead = (orderStatus: SupabaseReportOrderStatus | null): boolean =>
+  orderStatus === 'pending' || orderStatus === 'paid';
+
 export const reportsApi = createApi({
   reducerPath: 'reportsApi',
   baseQuery: fakeBaseQuery<{status?: number; data?: unknown}>(),
@@ -136,40 +189,95 @@ export const reportsApi = createApi({
               ...fallback,
               fullContent: fallback.preview,
               purchased: false,
+              lifecycleStatus: 'ready',
             },
           };
         }
 
-        const [{data: catalogData, error: catalogError}, {data: userReportData}] = await Promise.all([
-          supabase
-            .from('reports_catalog')
-            .select('id,slug,title,description,price_cents,currency,is_active')
-            .eq('id', reportId)
-            .eq('is_active', true)
-            .single(),
-          supabase
-            .from('user_reports')
-            .select('report_catalog_id,created_at,title,summary,content_json')
-            .eq('report_catalog_id', reportId)
-            .order('created_at', {ascending: false})
-            .limit(1)
-            .maybeSingle(),
-        ]);
+        try {
+          const [{data: catalogData, error: catalogError}, {data: userReportData, error: userReportError}] =
+            await withTimeout(
+              Promise.all([
+                supabase
+                  .from('reports_catalog')
+                  .select('id,slug,title,description,price_cents,currency,is_active')
+                  .eq('id', reportId)
+                  .eq('is_active', true)
+                  .single(),
+                supabase
+                  .from('user_reports')
+                  .select('report_catalog_id,created_at,updated_at,version,title,summary,content_json,status')
+                  .eq('report_catalog_id', reportId)
+                  .order('created_at', {ascending: false})
+                  .limit(1)
+                  .maybeSingle(),
+              ]),
+            );
 
-        if (catalogError) {
-          return {error: {status: 500, data: catalogError.message}};
+          if (catalogError) {
+            return {error: {status: mapSupabaseErrorStatus(catalogError.message), data: catalogError.message}};
+          }
+
+          if (userReportError) {
+            return {
+              error: {
+                status: mapSupabaseErrorStatus(userReportError.message),
+                data: userReportError.message,
+              },
+            };
+          }
+
+          const catalogItem = mapCatalogRowToItem(catalogData as SupabaseReportCatalogRow);
+          const userReport = (userReportData ?? null) as SupabaseUserReportRow | null;
+
+          if (userReport) {
+            return {
+              data: {
+                ...catalogItem,
+                fullContent: mapUserReportContent(userReport.content_json),
+                purchased: true,
+                lifecycleStatus: userReport.status === 'archived' ? 'ready' : userReport.status,
+              },
+            };
+          }
+
+          const orderResult = (await withTimeout(
+            Promise.resolve(
+              supabase
+                .from('report_orders')
+                .select('status')
+                .eq('report_catalog_id', reportId)
+                .order('created_at', {ascending: false})
+                .limit(1)
+                .maybeSingle(),
+            ),
+          )) as {data: SupabaseReportOrderRow | null; error: {message: string} | null};
+
+          const {data: orderData, error: orderError} = orderResult;
+
+          if (orderError) {
+            return {error: {status: mapSupabaseErrorStatus(orderError.message), data: orderError.message}};
+          }
+
+          const latestOrder = (orderData ?? null) as SupabaseReportOrderRow | null;
+          const latestOrderStatus = latestOrder?.status ?? null;
+
+          return {
+            data: {
+              ...catalogItem,
+              fullContent: catalogItem.preview,
+              purchased: isOrderAccessibleForRead(latestOrderStatus),
+              lifecycleStatus: mapOrderToLifecycleStatus(latestOrderStatus),
+            },
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          if (message === 'timeout') {
+            return {error: {status: 408, data: 'timeout'}};
+          }
+
+          return {error: {status: 500, data: message}};
         }
-
-        const catalogItem = mapCatalogRowToItem(catalogData as SupabaseReportCatalogRow);
-        const userReport = (userReportData ?? null) as SupabaseUserReportRow | null;
-
-        return {
-          data: {
-            ...catalogItem,
-            fullContent: userReport ? mapUserReportContent(userReport.content_json) : catalogItem.preview,
-            purchased: Boolean(userReport),
-          },
-        };
       },
       providesTags: (_, __, reportId) => [{type: 'ReportDetail', id: reportId}],
     }),
@@ -205,18 +313,33 @@ export const reportsApi = createApi({
           return {data: {ok: true}};
         }
 
-        const {error} = await supabase.from('report_orders').insert({
-          report_catalog_id: reportCatalogId,
-          status: 'pending',
-        });
+        try {
+          const insertResult = (await withTimeout(
+            Promise.resolve(
+              supabase.from('report_orders').insert({
+                report_catalog_id: reportCatalogId,
+                status: 'pending',
+              }),
+            ),
+          )) as {error: {message: string} | null};
 
-        if (error) {
-          return {error: {status: 500, data: error.message}};
+          const {error} = insertResult;
+
+          if (error) {
+            return {error: {status: mapSupabaseErrorStatus(error.message), data: error.message}};
+          }
+
+          return {data: {ok: true}};
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          if (message === 'timeout') {
+            return {error: {status: 408, data: 'timeout'}};
+          }
+
+          return {error: {status: 500, data: message}};
         }
-
-        return {data: {ok: true}};
       },
-      invalidatesTags: ['PurchasedReports'],
+      invalidatesTags: ['PurchasedReports', 'ReportDetail'],
     }),
   }),
 });
