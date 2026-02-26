@@ -1,0 +1,6 @@
+{"incident_id":"inc-001","timestamp":"2026-02-24T10:00:00Z","actual_class":"db-lock","scores":{"network":0.05,"db-lock":0.84,"stale-race":0.08,"unknown":0.03}}
+{"incident_id":"inc-002","timestamp":"2026-02-24T11:00:00Z","actual_class":"network","scores":{"network":0.73,"db-lock":0.09,"stale-race":0.11,"unknown":0.07}}
+{"incident_id":"inc-003","timestamp":"2026-02-25T10:00:00Z","actual_class":"stale-race","scores":{"network":0.08,"db-lock":0.14,"stale-race":0.71,"unknown":0.07}}
+{"incident_id":"inc-004","timestamp":"2026-02-25T12:00:00Z","actual_class":"db-lock","scores":{"network":0.12,"db-lock":0.66,"stale-race":0.17,"unknown":0.05}}
+{"incident_id":"inc-005","timestamp":"2026-02-26T09:00:00Z","actual_class":"unknown","scores":{"network":0.22,"db-lock":0.25,"stale-race":0.18,"unknown":0.35}}
+{"incident_id":"inc-006","timestamp":"2026-02-26T10:30:00Z","actual_class":"network","scores":{"network":0.68,"db-lock":0.15,"stale-race":0.08,"unknown":0.09}}

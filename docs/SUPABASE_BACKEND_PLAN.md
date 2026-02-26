@@ -152,9 +152,126 @@ Notlar:
 - Supabase env yoksa (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) local fallback catalog ile app akışı korunur.
 - UI, reports ekranlarında `reportsSlice` mock catalog yerine `reportsApi` query cache kullanır.
 
+## RLOOP-017 Live Lifecycle Status
+
+Aktifleşen/sertleştirilen noktalar:
+
+- `getReportDetail(reportId)` artık gerçek lifecycle döndürüyor:
+  - Öncelik: `user_reports.status` (`queued|processing|ready`)
+  - Fallback: `report_orders.status` (`pending -> queued`, `paid -> processing`)
+- Read ekranı doğrudan detail query lifecycle’ına bağlı.
+- 401/403/timeout edge-case’leri API katmanında normalize edilip UI’da anlamlı fallback + retry olarak gösteriliyor.
+- Checkout sonrası frontend local başlangıç lifecycle’ı `queued` olarak set edilerek state continuity korunuyor.
+
+## RLOOP-018 Backend Lifecycle + Realtime Plan Update
+
+### Lifecycle Source Priority (single source)
+1. **Primary:** `user_reports.status`
+2. **Fallback:** `report_orders.status` (yalnızca `user_reports` henüz oluşmadıysa)
+
+Mapping (UI lifecycle):
+- `user_reports.status`
+  - `queued -> queued`
+  - `processing -> processing`
+  - `ready -> ready`
+  - `archived -> ready` (read ekranında terminal fallback)
+- `report_orders.status` fallback
+  - `pending -> queued`
+  - `paid -> processing`
+  - `failed -> queued` (retry/yeniden üretim bekleyebilir)
+  - `refunded -> ready` (active lifecycle dışı)
+
+### Realtime Read Model
+- Channel: `postgres_changes` on `public.user_reports`
+- Filter: `report_catalog_id=eq.<id>`
+- Trigger: `UPDATE` event geldiğinde detail query refetch
+- Polling fallback: low frequency (`15s`) yalnızca güvenlik ağı
+
+### Telemetry Skeletons
+- `report_lifecycle_transition`
+- `report_lifecycle_ready`
+- `report_realtime_subscription`
+- `reports_retry` içinde `retry_count`
+
+## RLOOP-019 Server-side Authority + Realtime Reliability Plan Update
+
+### Lifecycle transition guard policy (backend)
+`user_reports.status` için backend trigger/policy tarafında aşağıdaki invalid transition'lar bloklanmalı:
+
+- `queued -> ready`
+- `processing -> queued`
+- `ready -> queued`
+- `ready -> processing`
+
+Allowed transitions:
+- `queued -> queued|processing`
+- `processing -> processing|ready`
+- `ready -> ready`
+
+Client tarafı defensive guard uygular; ancak **final authority backend** kalır.
+
+### Realtime reliability hardening
+- Subscription drop durumları (`CLOSED|TIMED_OUT|CHANNEL_ERROR`) için reconnect + backoff (`1s,2s,4s,8s,15s`) uygulanmalı.
+- Out-of-order event riskine karşı payload tarafında `updated_at` ve mümkünse `version` alanı sağlanmalı.
+- Client stale event'leri ignore eder; backend'de de monoton güncelleme (trigger check) önerilir.
+
+### Telemetry coverage (RLOOP-019)
+Ek metrikler:
+- reconnect attempts
+- subscription drops
+- stale event ignored
+
+## RLOOP-020 Backend Enforcement Package
+
+### Migration Draft (executable)
+Dosya: `docs/supabase/migrations/20260226130500_rloop020_user_reports_enforcement.sql`
+
+İçerik:
+- `user_reports` tablosuna `version (int, default 1)` ve `updated_at (timestamptz, utc now())` ekler.
+- `validate_user_reports_status_transition()` trigger function ile invalid status geçişlerini DB seviyesinde bloklar.
+- `bump_user_reports_version_and_timestamp()` trigger function ile her update'te `version` artırır ve `updated_at` yeniler.
+
+Blocked transitions (DB authority):
+- `queued -> ready`
+- `processing -> queued`
+- `ready -> queued`
+- `ready -> processing`
+- `archived -> !archived`
+
+Allowed transitions:
+- `queued -> queued|processing`
+- `processing -> processing|ready`
+- `ready -> ready`
+- `archived -> archived`
+
+### Versioning + Realtime Ordering Strategy
+- Realtime payload'larında `updated_at` + `version` birlikte kullanılmalı.
+- Client tarafında stale event ignore kuralı:
+  - incoming `version` < local `version` => ignore
+  - incoming `updated_at` < local `updated_at` => ignore
+- Backend'de monoton artış trigger ile garanti edilir.
+
+### Reconciliation Plan (`processing` stuck records)
+Skeleton: `docs/supabase/reconciliation/reconcile_stuck_processing.ts`
+
+Plan:
+1. SLA süresini aşmış `processing` kayıtlarını bul (`updated_at < now - SLA`).
+2. `alert_only` veya `retry` mode ile çalıştır.
+3. `retry` için privileged RPC (`requeue_stuck_user_report`) çağrısı yap.
+4. Her adımı audit/telemetry ile logla.
+
+Önerilen cron:
+- `*/10 * * * *` (10 dakikada bir)
+- edge function veya secure worker üzerinden `service_role` ile.
+
+### Client Compatibility Notes
+- `getReportDetail` query’si `user_reports` içinden `updated_at` ve `version` okumalı.
+- Bu alanlar UI rendering'i bozmaz; sadece freshness guard için metadata sağlar.
+- Mevcut lifecycle guard matrix ile çakışma yoktur (client defensive, backend authoritative).
+
 ## Open Items
 
-1. SQL migration scripts hazırlanmalı.
+1. `requeue_stuck_user_report` RPC'si tasarlanmalı (admin override/audit yaklaşımı netleştirilmeli).
 2. Trigger: `auth.users` -> `profiles` otomatik create (opsiyonel ama önerilir).
 3. Payment provider webhooks + service role güvenlik modeli netleştirilmeli.
-4. Report generation pipeline (queue/edge function) tasarlanmalı.
+4. Report generation pipeline (queue/edge function) production-ready hale getirilmeli.
