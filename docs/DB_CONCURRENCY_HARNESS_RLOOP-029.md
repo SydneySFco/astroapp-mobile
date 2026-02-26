@@ -1,148 +1,104 @@
-# DB-backed Concurrency Harness (RLOOP-029)
+# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-030 update)
 
 ## Purpose
-`finalize_reconcile_job` concurrency davranışını gerçek DB seviyesinde doğrulamak ve nightly otomasyon için temel hazırlamak.
+`finalize_reconcile_job` concurrency davranışını gerçek RPC outcome’larına bağlamak ve nightly CI’ı assertion-fail odaklı çalıştırmak.
 
 Hedef metrikler:
-- outcome dağılımı: `applied:idempotent:stale_blocked`
+- outcome dağılımı: `applied:idempotent:stale_blocked:unknown`
 - stale conflict ratio
-- run-to-run drift gözlemi
+- run-to-run trend notu (önceki run ile karşılaştırma)
 
 ---
 
-## Scope
-Bu doküman bir **plan + skeleton** sunar. Production-grade assertion/fail policy RLOOP-030’da sıkılaştırılacaktır.
+## RLOOP-030 Delta
 
-### In Scope
-- Ephemeral schema lifecycle (create/seed/drop)
-- Parallel finalize race senaryoları
-- Outcome aggregation + JSON report
-- Nightly CI integration noktaları
+### 1) Harness wiring (RPC adapter contract)
+Script: `scripts/concurrency-harness-rloop029.sh`
 
-### Out of Scope (RLOOP-030)
-- Full SQL migration automation for harness tables
-- Historical trend persistence (external TSDB/warehouse)
-- Slack/PagerDuty integration
+Adapter modları:
+- `HARNESS_MODE=rpc_http`: Supabase REST RPC endpoint’i üzerinden gerçek çağrı
+- `HARNESS_MODE=command`: external adapter command (JSON outcome contract)
+- `HARNESS_MODE=dry`: deterministic dry fallback
+- `HARNESS_MODE=auto` (default): env’e göre otomatik seçim
 
----
-
-## Harness Architecture
-
-### 1) Ephemeral schema strategy
-Her run için izole bir schema oluşturulur:
-- örnek: `harness_20260226_133700_ab12`
-
-Adımlar:
-1. `create schema if not exists <schema>`
-2. Test tablosu/seed data oluştur
-3. Concurrency race çalıştır
-4. Sonuçları JSON raporla
-5. `drop schema <schema> cascade`
+Command adapter contract:
+- `FINALIZE_RPC_ADAPTER_CMD` çıktısı JSON olmalı
+- Beklenen alan: `outcome` (`applied|idempotent|stale_blocked`)
 
 Not:
-- Script hata alsa bile cleanup için `trap` kullanılmalı.
-- CI’da runlar birbiriyle çakışmasın diye schema adında timestamp+random tutulur.
+- Gerçek seed/schema lifecycle hâlen ayrı migration/fixture katmanına ihtiyaç duyar.
+- Bu iterasyonda outcome sayımı artık mümkün olduğunda gerçek RPC response’una bağlıdır.
 
-### 2) Seed strategy
-Minimum seed şeması:
-- `reconcile_jobs` benzeri bir test tablosu
-  - `id` (uuid)
-  - `status`
-  - `lease_token`
-  - `version`
-  - `finalized_at`
+### 2) Strict CI assertions
+Aşağıdaki breach durumlarında job fail edilir:
+- `applied_count == 0 && total_attempts > 0` (`FAIL_ON_APPLIED_ZERO=1`)
+- `stale_conflict_ratio >= STALE_RATIO_FAIL_THRESHOLD` (`FAIL_ON_THRESHOLD_BREACH=1`)
 
-Seed set önerisi:
-- Tek bir hot job id (race için)
-- Ek olarak birkaç control row (opsiyonel)
+Varsayılan fail threshold:
+- `STALE_RATIO_FAIL_THRESHOLD=0.3000`
 
-### 3) Parallel finalize race
-Aynı job üzerinde aynı anda finalize tetiklenir.
-
-Parametreler:
-- `workers` (örn. 20)
-- `iterations` (örn. 5)
-
-Beklenen davranış:
-- İlk geçerli finalize: `applied`
-- Aynı lease/version ile tekrarlar: `idempotent`
-- stale lease/version ile gelenler: `stale_blocked`
-
-### 4) Outcome aggregation
-Her deneme için outcome toplanır:
-- `applied_count`
-- `idempotent_count`
-- `stale_blocked_count`
-- `total_attempts`
-
-Derived metric:
-- `stale_conflict_ratio = stale_blocked_count / total_attempts`
-
-Output format (öneri):
+### 3) Artifact + trend standard
+Standart JSON raporu:
 ```json
 {
   "schema": "harness_20260226_133700_ab12",
+  "timestamp_utc": "2026-02-26T13:37:00Z",
+  "mode": "rpc_http",
   "workers": 20,
   "iterations": 5,
   "total_attempts": 100,
   "outcomes": {
     "applied": 5,
     "idempotent": 60,
-    "stale_blocked": 35
+    "stale_blocked": 35,
+    "unknown": 0
   },
   "ratios": {
-    "stale_conflict_ratio": 0.35
+    "stale_conflict_ratio": 0.35,
+    "unknown_ratio": 0
+  },
+  "assertions": {
+    "fail_on_applied_zero": 1,
+    "fail_on_threshold_breach": 1,
+    "stale_ratio_fail_threshold": 0.30,
+    "applied_zero_breach": 0,
+    "threshold_breach": 1,
+    "job_status": "fail"
+  },
+  "trend": {
+    "previous_stale_conflict_ratio": 0.21,
+    "note": "compared_to_previous_run"
   }
 }
 ```
 
----
+Historical karşılaştırma:
+- Script, `reports/concurrency-harness-history.ndjson` dosyasına her run raporunu append eder.
+- `trend.previous_stale_conflict_ratio` alanı son run’dan okunur.
 
-## Ops Thresholds (stale conflict ratio)
-
-Önerilen alarm seviyeleri:
-- **Healthy:** `< 0.05`
-- **Watch:** `>= 0.05 && < 0.15`
-- **Alert:** `>= 0.15 && < 0.30`
-- **Critical:** `>= 0.30`
-
-Ek kurallar:
-- `applied_count == 0 && total_attempts > 0` => doğrudan alarm
-- 7 günlük baseline’a göre `>= 2x` artış => watch/alert escalation
-
-Bu eşikler başlangıç önerisidir; prod traffic pattern’e göre kalibre edilmelidir.
+### 4) Notifications draft
+Workflow’de opsiyonel webhook adımı eklendi:
+- secret: `CONCURRENCY_HARNESS_WEBHOOK_URL`
+- varsa kısa status payload gönderilir (Slack incoming webhook dahil uyumlu)
 
 ---
 
-## CI Integration Draft
-
+## CI Integration
 Workflow: `.github/workflows/nightly-concurrency-harness.yml`
 
-Trigger:
-- nightly schedule (UTC)
-- manual dispatch
+Akış:
+1. install
+2. harness run (strict assertions)
+3. artifact upload (`*.json` + `history.ndjson`)
+4. optional webhook notify
 
-Secrets/vars gereksinimleri:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- opsiyonel: `SUPABASE_DB_URL` (doğrudan psql/test client için)
-
-CI job:
-1. dependencies install
-2. harness script execute
-3. report artifact upload
-4. (RLOOP-030) threshold breach ise fail
+Secrets/vars:
+- Required (rpc_http): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- Optional notify: `CONCURRENCY_HARNESS_WEBHOOK_URL`
 
 ---
 
-## Script Skeleton
-
-Dosya: `scripts/concurrency-harness-rloop029.sh`
-
-Bu script şu anda:
-- env doğrular
-- ephemeral schema adı üretir
-- placeholder report üretir
-- cleanup trap içerir
-
-RLOOP-030’da gerçek DB/RPC çağrıları ve assert/fail logic eklenecektir.
+## Remaining follow-up (RLOOP-031 adayı)
+- Ephemeral schema create/seed/drop adımlarını gerçek DB fixture katmanıyla tamamlamak
+- Job seed + lease ownership setup’ını harness içine almak
+- Trend baseline’ı repo artifact’ından kalıcı storage’a taşımak (S3/TSDB)

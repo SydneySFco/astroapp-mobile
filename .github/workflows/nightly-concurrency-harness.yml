@@ -1,4 +1,4 @@
-name: Nightly Concurrency Harness (Draft)
+name: Nightly Concurrency Harness
 
 on:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
         description: "Race iterations"
         required: false
         default: "5"
+      stale_ratio_fail_threshold:
+        description: "Fail threshold for stale_conflict_ratio"
+        required: false
+        default: "0.3000"
   schedule:
     - cron: "30 2 * * *" # 02:30 UTC nightly
 
@@ -32,25 +36,64 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Run DB concurrency harness (draft)
+      - name: Run DB concurrency harness (strict assertions)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           WORKERS: ${{ github.event.inputs.workers || '20' }}
           ITERATIONS: ${{ github.event.inputs.iterations || '5' }}
+          STALE_RATIO_FAIL_THRESHOLD: ${{ github.event.inputs.stale_ratio_fail_threshold || '0.3000' }}
+          FAIL_ON_APPLIED_ZERO: "1"
+          FAIL_ON_THRESHOLD_BREACH: "1"
+          HARNESS_MODE: auto
         run: |
           chmod +x scripts/concurrency-harness-rloop029.sh
           scripts/concurrency-harness-rloop029.sh
 
-      - name: Upload harness report
+      - name: Upload harness report + history
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: concurrency-harness-report
-          path: reports/concurrency-harness-*.json
+          path: |
+            reports/concurrency-harness-*.json
+            reports/concurrency-harness-history.ndjson
 
-      - name: Secret requirements (documentation)
+      - name: Notify webhook (optional)
+        if: always() && secrets.CONCURRENCY_HARNESS_WEBHOOK_URL != ''
+        env:
+          CONCURRENCY_HARNESS_WEBHOOK_URL: ${{ secrets.CONCURRENCY_HARNESS_WEBHOOK_URL }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          latest_report="$(ls -1t reports/concurrency-harness-*.json 2>/dev/null | head -n 1)"
+          if [ -z "$latest_report" ]; then
+            payload='{"text":"[concurrency-harness] no report generated","run_url":"'"$GITHUB_RUN_URL"'"}'
+          else
+            payload="$(python3 - <<'PY' "$latest_report" "$GITHUB_RUN_URL"
+import json,sys
+report_path,run_url=sys.argv[1],sys.argv[2]
+with open(report_path,'r',encoding='utf-8') as f:
+    r=json.load(f)
+outcomes=r.get('outcomes',{})
+ratios=r.get('ratios',{})
+assertions=r.get('assertions',{})
+text=(
+    f"[concurrency-harness] status={assertions.get('job_status')} "
+    f"applied={outcomes.get('applied')} idempotent={outcomes.get('idempotent')} "
+    f"stale={outcomes.get('stale_blocked')} unknown={outcomes.get('unknown')} "
+    f"stale_ratio={ratios.get('stale_conflict_ratio')}"
+)
+print(json.dumps({'text': text, 'run_url': run_url}))
+PY
+)"
+          fi
+
+          curl -sS -X POST "$CONCURRENCY_HARNESS_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$payload" >/dev/null
+
+      - name: Secret requirements
         if: always()
         run: |
-          echo "Required secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY"
-          echo "Optional future variable: SUPABASE_DB_URL"
+          echo "Required secrets for rpc_http mode: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY"
+          echo "Optional secret for notifications: CONCURRENCY_HARNESS_WEBHOOK_URL"
