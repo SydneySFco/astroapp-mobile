@@ -152,6 +152,17 @@ Notlar:
 - Supabase env yoksa (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) local fallback catalog ile app akışı korunur.
 - UI, reports ekranlarında `reportsSlice` mock catalog yerine `reportsApi` query cache kullanır.
 
+## RLOOP-017 Live Lifecycle Status
+
+Aktifleşen/sertleştirilen noktalar:
+
+- `getReportDetail(reportId)` artık gerçek lifecycle döndürüyor:
+  - Öncelik: `user_reports.status` (`queued|processing|ready`)
+  - Fallback: `report_orders.status` (`pending -> queued`, `paid -> processing`)
+- Read ekranı doğrudan detail query lifecycle’ına bağlı.
+- 401/403/timeout edge-case’leri API katmanında normalize edilip UI’da anlamlı fallback + retry olarak gösteriliyor.
+- Checkout sonrası frontend local başlangıç lifecycle’ı `queued` olarak set edilerek state continuity korunuyor.
+
 ## Open Items
 
 1. SQL migration scripts hazırlanmalı.
