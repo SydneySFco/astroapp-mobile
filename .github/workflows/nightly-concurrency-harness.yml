@@ -58,7 +58,7 @@ jobs:
           chmod +x scripts/concurrency-harness-rloop029.sh
           scripts/concurrency-harness-rloop029.sh
 
-      - name: Evaluate reliability + enforce gate
+      - name: Evaluate reliability + build ground-truth artifact + enforce gate
         env:
           RELIABILITY_WARN_THRESHOLD: ${{ github.event.inputs.reliability_warn_threshold || '0.0800' }}
           RELIABILITY_FAIL_THRESHOLD: ${{ github.event.inputs.reliability_fail_threshold || '0.1200' }}
@@ -70,12 +70,50 @@ jobs:
             --slice-by day \
             --out reports/reliability-eval-rloop036.json
 
+          today="$(date -u +%Y-%m-%d)"
+
+          python3 scripts/build-groundtruth-artifact-rloop038.py \
+            --input reports/incidents-groundtruth.sample.jsonl \
+            --cadence nightly \
+            --snapshot-date "$today" \
+            --global-min-samples 25 \
+            --min-class-samples "unknown:30" \
+            --out "reports/groundtruth-artifacts/nightly/$today/groundtruth-snapshot.json"
+
+          python3 scripts/validate-groundtruth-artifact-schema-rloop038.py \
+            --input "reports/groundtruth-artifacts/nightly/$today/groundtruth-snapshot.json"
+
+          if [ "$(date -u +%u)" = "7" ]; then
+            python3 scripts/build-groundtruth-artifact-rloop038.py \
+              --input reports/incidents-groundtruth.sample.jsonl \
+              --cadence weekly \
+              --snapshot-date "$today" \
+              --global-min-samples 25 \
+              --min-class-samples "unknown:30" \
+              --out "reports/groundtruth-artifacts/weekly/$today/groundtruth-snapshot.json"
+
+            python3 scripts/validate-groundtruth-artifact-schema-rloop038.py \
+              --input "reports/groundtruth-artifacts/weekly/$today/groundtruth-snapshot.json"
+          fi
+
           python3 scripts/reliability-gate-rloop037.py \
             --input reports/reliability-eval-rloop036.json \
             --warn-threshold "$RELIABILITY_WARN_THRESHOLD" \
             --fail-threshold "$RELIABILITY_FAIL_THRESHOLD" \
             --out-json reports/reliability-gate-rloop037.json \
             --out-md reports/reliability-gate-rloop037.md
+
+          python3 scripts/route-drift-alerts-rloop038.py \
+            --input reports/reliability-eval-rloop036.json \
+            --window 7 \
+            --warn-delta 0.015 \
+            --critical-delta 0.030 \
+            --warn-abs "$RELIABILITY_WARN_THRESHOLD" \
+            --critical-abs "$RELIABILITY_FAIL_THRESHOLD" \
+            --warn-route "reliability-warn-channel" \
+            --critical-route "reliability-critical-channel" \
+            --out-json reports/drift-alert-routing-rloop038.json \
+            --out-md reports/drift-alert-routing-rloop038.md
 
       - name: Upload harness report + history
         if: always()
@@ -88,6 +126,9 @@ jobs:
             reports/reliability-eval-rloop036.json
             reports/reliability-gate-rloop037.json
             reports/reliability-gate-rloop037.md
+            reports/drift-alert-routing-rloop038.json
+            reports/drift-alert-routing-rloop038.md
+            reports/groundtruth-artifacts/**/*.json
 
       - name: Notify webhook (optional)
         if: always() && secrets.CONCURRENCY_HARNESS_WEBHOOK_URL != ''
