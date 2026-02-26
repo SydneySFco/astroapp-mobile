@@ -3,6 +3,11 @@ import {Pressable, StyleSheet, Text, View} from 'react-native';
 
 import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
+import {
+  getNextRealtimeClock,
+  isValidLifecycleTransition,
+  shouldAcceptRealtimeEvent,
+} from '../features/reports/lifecycleGuards';
 import {ReportLifecycleStatus, useGetReportDetailQuery} from '../features/reports/reportsApi';
 import {isSupabaseConfigured, supabase} from '../services/supabase/client';
 import {colors} from '../theme/colors';
@@ -15,8 +20,18 @@ type Props = {
   onBack: () => void;
 };
 
+type RealtimeStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR';
+type RealtimePayload = {
+  new?: {
+    status?: unknown;
+    updated_at?: string | null;
+    version?: number | null;
+  };
+};
+
 const FALLBACK_POLLING_INTERVAL = 15000;
 const RETRIABLE_ERROR_CODES = [401, 403, 408] as const;
+const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 15000];
 
 export function ReportReadScreen({
   reportId,
@@ -29,6 +44,13 @@ export function ReportReadScreen({
   const readyAtRef = useRef<number | null>(null);
   const lifecycleStartAtRef = useRef<number | null>(null);
   const previousStatusRef = useRef<ReportLifecycleStatus | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldKeepRealtimeRef = useRef(true);
+  const realtimeClockRef = useRef<{updatedAt: number | null; version: number | null}>({
+    updatedAt: null,
+    version: null,
+  });
 
   const {
     data,
@@ -51,7 +73,11 @@ export function ReportReadScreen({
       return;
     }
 
-    onLifecycleStatusChange(data.lifecycleStatus);
+    const previousStatus = previousStatusRef.current ?? data.lifecycleStatus;
+
+    if (isValidLifecycleTransition(previousStatus, data.lifecycleStatus)) {
+      onLifecycleStatusChange(data.lifecycleStatus);
+    }
   }, [data?.lifecycleStatus, onLifecycleStatusChange]);
 
   useEffect(() => {
@@ -92,41 +118,108 @@ export function ReportReadScreen({
       return;
     }
 
-    const channel = supabase
-      .channel(`report-read-status:${reportId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'user_reports',
-          filter: `report_catalog_id=eq.${reportId}`,
-        },
-        payload => {
-          const nextStatus = payload.new?.status;
+    shouldKeepRealtimeRef.current = true;
 
-          if (
-            nextStatus === 'queued' ||
-            nextStatus === 'processing' ||
-            nextStatus === 'ready'
-          ) {
-            onLifecycleStatusChange?.(nextStatus);
+    const subscribeWithBackoff = () => {
+      const channel = supabase
+        .channel(`report-read-status:${reportId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_reports',
+            filter: `report_catalog_id=eq.${reportId}`,
+          },
+          payload => {
+            const realtimePayload = payload as RealtimePayload;
+            const nextStatus = realtimePayload.new?.status;
+
+            if (
+              !shouldAcceptRealtimeEvent(realtimeClockRef.current, {
+                updatedAt: realtimePayload.new?.updated_at,
+                version: realtimePayload.new?.version,
+              })
+            ) {
+              trackEvent('report_realtime_stale_event_ignored', {
+                report_id: reportId,
+              });
+              return;
+            }
+
+            realtimeClockRef.current = getNextRealtimeClock(realtimeClockRef.current, {
+              updatedAt: realtimePayload.new?.updated_at,
+              version: realtimePayload.new?.version,
+            });
+
+            if (
+              (nextStatus === 'queued' || nextStatus === 'processing' || nextStatus === 'ready') &&
+              isValidLifecycleTransition(previousStatusRef.current ?? nextStatus, nextStatus)
+            ) {
+              onLifecycleStatusChange?.(nextStatus);
+            }
+
+            refetch();
+          },
+        )
+        .subscribe(status => {
+          const realtimeStatus = status as RealtimeStatus;
+
+          if (realtimeStatus === 'SUBSCRIBED') {
+            reconnectAttemptsRef.current = 0;
+            trackEvent('report_realtime_subscription', {
+              report_id: reportId,
+              subscription_status: 'subscribed',
+            });
+            return;
           }
 
-          refetch();
-        },
-      )
-      .subscribe(status => {
-        if (status === 'SUBSCRIBED') {
-          trackEvent('report_realtime_subscription', {
-            report_id: reportId,
-            subscription_status: 'subscribed',
-          });
-        }
-      });
+          if (realtimeStatus === 'CLOSED' || realtimeStatus === 'TIMED_OUT' || realtimeStatus === 'CHANNEL_ERROR') {
+            trackEvent('report_realtime_subscription_drop', {
+              report_id: reportId,
+              subscription_status: realtimeStatus.toLowerCase(),
+            });
+
+            supabase.removeChannel(channel);
+
+            if (!shouldKeepRealtimeRef.current) {
+              return;
+            }
+
+            const attempt = reconnectAttemptsRef.current + 1;
+            reconnectAttemptsRef.current = attempt;
+            const delay = RECONNECT_BACKOFF_MS[Math.min(attempt - 1, RECONNECT_BACKOFF_MS.length - 1)];
+
+            trackEvent('report_realtime_reconnect_attempt', {
+              report_id: reportId,
+              reconnect_attempt: attempt,
+              reconnect_delay_ms: delay,
+            });
+
+            reconnectTimerRef.current = setTimeout(() => {
+              if (!shouldKeepRealtimeRef.current) {
+                return;
+              }
+
+              subscribeWithBackoff();
+            }, delay);
+          }
+        });
+
+      return channel;
+    };
+
+    const activeChannel = subscribeWithBackoff();
 
     return () => {
-      supabase.removeChannel(channel);
+      shouldKeepRealtimeRef.current = false;
+
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+
+      supabase.removeChannel(activeChannel);
     };
   }, [onLifecycleStatusChange, refetch, reportId]);
 
