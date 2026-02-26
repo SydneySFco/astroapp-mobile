@@ -68,10 +68,7 @@ export const toRetryDecision = (
 
 export type ReconcileJobRepository = {
   claimNext: (leaseDurationMs: number) => Promise<ReconcileJob | null>;
-  markSucceeded: (
-    job: Pick<ReconcileJob, 'id' | 'leaseToken' | 'leaseRevision'>,
-    finishedAt: string,
-  ) => Promise<void>;
+  markSucceeded: (jobId: string, finishedAt: string) => Promise<void>;
   markFailed: (
     jobId: string,
     errorCode: string,
@@ -106,7 +103,7 @@ export const finalizeReconcileJob = async (
   options?: FinalizeReconcileJobOptions,
 ): Promise<RetryDecision | null> => {
   if (input.result === 'succeeded') {
-    await repository.markSucceeded(job, now.toISOString());
+    await repository.markSucceeded(job.id, now.toISOString());
     return null;
   }
 
@@ -121,7 +118,7 @@ export const finalizeReconcileJob = async (
   );
 
   await repository.markFailed(
-    job,
+    job.id,
     failedInput.errorCode,
     failedInput.errorMessage,
     decision,

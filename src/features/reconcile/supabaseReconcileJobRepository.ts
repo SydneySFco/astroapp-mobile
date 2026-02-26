@@ -17,35 +17,6 @@ const OPS_VIEW = 'reconcile_job_ops_view';
 const CLAIM_RPC = 'claim_reconcile_job';
 const AUDIT_TABLE = 'reconcile_audit_log';
 
-const finalizeWithLease = async (
-  client: SupabaseClient,
-  input: {
-    jobId: string;
-    leaseToken?: string;
-    leaseRevision: number;
-    resultStatus: 'succeeded' | 'queued' | 'dead_lettered';
-    errorCode?: string;
-    errorMessage?: string;
-    retryAfter?: string;
-    finishedAt?: string;
-  },
-): Promise<void> => {
-  const {error} = await client.rpc(FINALIZE_RPC, {
-    p_job_id: input.jobId,
-    p_lease_token: input.leaseToken ?? null,
-    p_lease_revision: input.leaseRevision,
-    p_result_status: input.resultStatus,
-    p_error_code: input.errorCode ?? null,
-    p_error_message: input.errorMessage ?? null,
-    p_retry_after: input.retryAfter ?? null,
-    p_finished_at: input.finishedAt ?? null,
-  });
-
-  if (error) {
-    throw error;
-  }
-};
-
 export const createSupabaseReconcileJobRepository = (
   client: SupabaseClient = supabase,
 ): RuntimeReconcileJobRepository => ({
@@ -65,14 +36,22 @@ export const createSupabaseReconcileJobRepository = (
     return mapReconcileJobRowToDomain(data as ReconcileJobRow);
   },
 
-  markSucceeded: async (job, finishedAt) => {
-    await finalizeWithLease(client, {
-      jobId: job.id,
-      leaseToken: job.leaseToken,
-      leaseRevision: job.leaseRevision,
-      resultStatus: 'succeeded',
-      finishedAt,
-    });
+  markSucceeded: async (jobId, finishedAt) => {
+    const {error} = await client
+      .from(JOB_TABLE)
+      .update({
+        status: 'succeeded',
+        leased_until: null,
+        retry_after: null,
+        last_error_code: null,
+        last_error_message: null,
+        updated_at: finishedAt,
+      })
+      .eq('id', jobId);
+
+    if (error) {
+      throw error;
+    }
   },
 
   markFailed: async (jobId, errorCode, errorMessage, decision: RetryDecision) => {
@@ -87,16 +66,9 @@ export const createSupabaseReconcileJobRepository = (
       })
       .eq('id', jobId);
 
-    await finalizeWithLease(client, {
-      jobId: job.id,
-      leaseToken: job.leaseToken,
-      leaseRevision: job.leaseRevision,
-      resultStatus,
-      errorCode,
-      errorMessage,
-      retryAfter: decision.nextRetryAfter,
-      finishedAt: resultStatus === 'dead_lettered' ? new Date().toISOString() : undefined,
-    });
+    if (error) {
+      throw error;
+    }
   },
 
   replay: async (input: ReconcileJobReplayInput): Promise<ReconcileJobReplayResult> => {
