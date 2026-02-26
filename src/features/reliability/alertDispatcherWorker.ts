@@ -57,11 +57,19 @@ export type AlertDispatchMetrics = {
   dispatchRetryCount: number;
 };
 
+export type DispatchAttemptTelemetry = {
+  attempt: number;
+  latencyMs: number;
+  success: boolean;
+  failureClassification?: DispatchErrorClassification;
+};
+
 export type AlertDispatchTickResult = {
   dispatched: boolean;
   suppressed: boolean;
   attempts: number;
   metrics: AlertDispatchMetrics;
+  attemptTelemetry: DispatchAttemptTelemetry[];
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -131,6 +139,7 @@ export const runAlertDispatcherTick = async (
     deadLetterQueue: DeadLetterQueue;
     policy: DispatchWorkerPolicy;
     sleep?: (ms: number) => Promise<void>;
+    nowMs?: () => number;
   },
 ): Promise<AlertDispatchTickResult> => {
   const metrics: AlertDispatchMetrics = {
@@ -139,6 +148,8 @@ export const runAlertDispatcherTick = async (
     dispatchSuppressionHitCount: 0,
     dispatchRetryCount: 0,
   };
+  const attemptTelemetry: DispatchAttemptTelemetry[] = [];
+  const nowMs = deps.nowMs ?? Date.now;
 
   if (await shouldSuppress(event, deps.suppressionStore)) {
     metrics.dispatchSuppressionHitCount += 1;
@@ -147,6 +158,7 @@ export const runAlertDispatcherTick = async (
       suppressed: true,
       attempts: 0,
       metrics,
+      attemptTelemetry,
     };
   }
 
@@ -157,8 +169,16 @@ export const runAlertDispatcherTick = async (
   let lastErrorClassification: DispatchErrorClassification = 'unknown';
 
   for (let attempt = 1; attempt <= deps.policy.maxAttempts; attempt += 1) {
+    const startedAt = nowMs();
     const result = await dispatcher.dispatch(event);
+    const latencyMs = Math.max(0, nowMs() - startedAt);
+
     if (result.success) {
+      attemptTelemetry.push({
+        attempt,
+        latencyMs,
+        success: true,
+      });
       metrics.dispatchSuccessCount += 1;
       await deps.suppressionStore.setLastSentAt(event.dedupKey, new Date().toISOString());
       return {
@@ -166,10 +186,18 @@ export const runAlertDispatcherTick = async (
         suppressed: false,
         attempts: attempt,
         metrics,
+        attemptTelemetry,
       };
     }
 
     const classification = classifyDispatchError(result);
+    attemptTelemetry.push({
+      attempt,
+      latencyMs,
+      success: false,
+      failureClassification: classification,
+    });
+
     lastErrorClassification = classification;
     lastErrorMessage = result.errorMessage;
 
@@ -201,6 +229,7 @@ export const runAlertDispatcherTick = async (
     suppressed: false,
     attempts: deps.policy.maxAttempts,
     metrics,
+    attemptTelemetry,
   };
 };
 
