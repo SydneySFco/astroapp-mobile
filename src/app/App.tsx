@@ -6,6 +6,7 @@ import {trackEvent} from '../features/analytics/analytics';
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
 import {markReportPurchased} from '../features/reports/reportsSlice';
 import {setPremium} from '../features/subscription/subscriptionSlice';
+import {runLogoutFlow} from '../features/auth/logoutFlow';
 import {AuthFlowScreen} from '../screens/auth/AuthFlowScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {LegalScreen} from '../screens/LegalScreen';
@@ -69,7 +70,8 @@ export function App() {
     setScreen('settings');
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await runLogoutFlow(dispatch);
     dispatch(setPremium(false));
     dispatch(setOnboardingComplete(false));
     setScreen('home');

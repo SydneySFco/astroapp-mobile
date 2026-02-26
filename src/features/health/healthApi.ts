@@ -9,10 +9,7 @@ export type HealthResponse = {
 
 export const healthApi = createApi({
   reducerPath: 'healthApi',
-  baseQuery: axiosBaseQuery({
-    // Gerçek backend URL'i geldiğinde güncellenebilir.
-    baseUrl: 'https://example.com',
-  }),
+  baseQuery: axiosBaseQuery(),
   endpoints: build => ({
     getHealth: build.query<HealthResponse, void>({
       query: () => ({

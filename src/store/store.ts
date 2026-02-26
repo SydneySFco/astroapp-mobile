@@ -5,6 +5,7 @@ import {healthApi} from '../features/health/healthApi';
 import {onboardingReducer} from '../features/onboarding/onboardingSlice';
 import {subscriptionReducer} from '../features/subscription/subscriptionSlice';
 import {reportsReducer} from '../features/reports/reportsSlice';
+import {reportsApi} from '../features/reports/reportsApi';
 
 export const store = configureStore({
   reducer: {
@@ -13,9 +14,14 @@ export const store = configureStore({
     reports: reportsReducer,
     [healthApi.reducerPath]: healthApi.reducer,
     [authApi.reducerPath]: authApi.reducer,
+    [reportsApi.reducerPath]: reportsApi.reducer,
   },
   middleware: getDefaultMiddleware =>
-    getDefaultMiddleware().concat(healthApi.middleware, authApi.middleware),
+    getDefaultMiddleware().concat(
+      healthApi.middleware,
+      authApi.middleware,
+      reportsApi.middleware,
+    ),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

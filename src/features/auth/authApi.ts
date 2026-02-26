@@ -1,36 +1,18 @@
 import {createApi} from '@reduxjs/toolkit/query/react';
 
 import {axiosBaseQuery} from '../../services/api/axiosBaseQuery';
-
-type LoginRequest = {
-  email: string;
-  password: string;
-};
-
-type RegisterRequest = {
-  fullName: string;
-  email: string;
-  password: string;
-  birthDate: string;
-  birthTime?: string;
-  city: string;
-  country: string;
-  intent: string;
-};
-
-type ForgotPasswordRequest = {
-  email: string;
-};
-
-type AuthResponse = {
-  message: string;
-};
-
-const API_BASE_URL = '';
+import {tokenStorage} from '../../services/auth/tokenStorage';
+import type {
+  AuthResponse,
+  ForgotPasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+} from './authTypes';
 
 export const authApi = createApi({
   reducerPath: 'authApi',
-  baseQuery: axiosBaseQuery({baseUrl: API_BASE_URL}),
+  baseQuery: axiosBaseQuery(),
+  tagTypes: ['AuthSession'],
   endpoints: builder => ({
     login: builder.mutation<AuthResponse, LoginRequest>({
       query: body => ({
@@ -38,6 +20,11 @@ export const authApi = createApi({
         method: 'POST',
         data: body,
       }),
+      async onQueryStarted(_, {queryFulfilled}) {
+        const {data} = await queryFulfilled;
+        await tokenStorage.setTokens(data.tokens);
+      },
+      invalidatesTags: ['AuthSession'],
     }),
     register: builder.mutation<AuthResponse, RegisterRequest>({
       query: body => ({
@@ -45,13 +32,32 @@ export const authApi = createApi({
         method: 'POST',
         data: body,
       }),
+      async onQueryStarted(_, {queryFulfilled}) {
+        const {data} = await queryFulfilled;
+        await tokenStorage.setTokens(data.tokens);
+      },
+      invalidatesTags: ['AuthSession'],
     }),
-    forgotPassword: builder.mutation<AuthResponse, ForgotPasswordRequest>({
+    forgotPassword: builder.mutation<{message: string}, ForgotPasswordRequest>({
       query: body => ({
         url: '/auth/forgot-password',
         method: 'POST',
         data: body,
       }),
+    }),
+    logout: builder.mutation<{success: boolean}, void>({
+      query: () => ({
+        url: '/auth/logout',
+        method: 'POST',
+      }),
+      async onQueryStarted(_, {queryFulfilled}) {
+        try {
+          await queryFulfilled;
+        } finally {
+          await tokenStorage.clearTokens();
+        }
+      },
+      invalidatesTags: ['AuthSession'],
     }),
   }),
 });
@@ -60,4 +66,5 @@ export const {
   useLoginMutation,
   useRegisterMutation,
   useForgotPasswordMutation,
+  useLogoutMutation,
 } = authApi;
