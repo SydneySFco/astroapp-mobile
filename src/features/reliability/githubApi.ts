@@ -12,6 +12,14 @@ export const DEFAULT_GITHUB_RETRY_POLICY: GitHubRetryPolicy = {
   jitterRatio: 0.2,
 };
 
+export type GitHubApiTelemetryEvent = {
+  endpoint: string;
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT';
+  attempt: number;
+  outcome: 'success' | 'retry' | 'failure' | 'rate_limited';
+  statusCode?: number;
+};
+
 export type GitHubApiClientConfig = {
   owner: string;
   repo: string;
@@ -19,6 +27,7 @@ export type GitHubApiClientConfig = {
   baseUrl?: string;
   retryPolicy?: Partial<GitHubRetryPolicy>;
   fetchImpl?: typeof fetch;
+  onTelemetry?: (event: GitHubApiTelemetryEvent) => Promise<void> | void;
 };
 
 export type GitHubIssueComment = {
@@ -38,6 +47,7 @@ type GitHubRequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
   body?: unknown;
   idempotencyKey?: string;
+  endpoint?: string;
 };
 
 const mergeRetryPolicy = (policy: Partial<GitHubRetryPolicy> | undefined): GitHubRetryPolicy => ({
@@ -158,6 +168,7 @@ export class GitHubApiClient {
 
   private async request<T>(path: string, options: GitHubRequestOptions = {}): Promise<T> {
     const method = options.method ?? 'GET';
+    const endpoint = options.endpoint ?? path;
 
     for (let attempt = 1; attempt <= this.retryPolicy.maxAttempts; attempt += 1) {
       const response = await this.fetchImpl(this.buildRepoPath(path), {
@@ -173,6 +184,14 @@ export class GitHubApiClient {
       });
 
       if (response.ok) {
+        await this.config.onTelemetry?.({
+          endpoint,
+          method,
+          attempt,
+          outcome: 'success',
+          statusCode: response.status,
+        });
+
         if (response.status === 204) {
           return undefined as T;
         }
@@ -182,7 +201,16 @@ export class GitHubApiClient {
       const retryAfterMs = parseRetryAfterMs(response);
       const retryableByStatus = shouldRetryStatus(response.status);
       const secondaryLimit = await isSecondaryRateLimit(response.clone());
+      const rateLimited = response.status === 429 || secondaryLimit;
       const shouldRetry = retryableByStatus || secondaryLimit;
+
+      await this.config.onTelemetry?.({
+        endpoint,
+        method,
+        attempt,
+        outcome: rateLimited ? 'rate_limited' : shouldRetry ? 'retry' : 'failure',
+        statusCode: response.status,
+      });
 
       if (!shouldRetry || attempt >= this.retryPolicy.maxAttempts) {
         throw new Error(`github_api_error:${response.status}:${method}:${path}`);
@@ -212,6 +240,7 @@ export class GitHubApiClient {
       method: 'POST',
       body: payload,
       idempotencyKey: payload.external_id,
+      endpoint: 'checks.create',
     });
   }
 
@@ -231,11 +260,14 @@ export class GitHubApiClient {
     return this.request<GitHubCheckRun>(`/check-runs/${checkRunId}`, {
       method: 'PATCH',
       body: payload,
+      endpoint: 'checks.update',
     });
   }
 
   public async listPullRequestComments(issueNumber: number): Promise<GitHubIssueComment[]> {
-    return this.request<GitHubIssueComment[]>(`/issues/${issueNumber}/comments`);
+    return this.request<GitHubIssueComment[]>(`/issues/${issueNumber}/comments`, {
+      endpoint: 'issues.comments.list',
+    });
   }
 
   public async createPullRequestComment(
@@ -247,6 +279,7 @@ export class GitHubApiClient {
       method: 'POST',
       body: {body},
       idempotencyKey: `comment:${issueNumber}:${marker}`,
+      endpoint: 'issues.comments.create',
     });
   }
 
@@ -254,6 +287,7 @@ export class GitHubApiClient {
     return this.request<GitHubIssueComment>(`/issues/comments/${commentId}`, {
       method: 'PATCH',
       body: {body},
+      endpoint: 'issues.comments.update',
     });
   }
 
@@ -262,6 +296,7 @@ export class GitHubApiClient {
     try {
       const response = await this.request<{content: string; sha: string}>(
         `/contents/${this.encodeContentPath(path)}${query}`,
+        {endpoint: 'contents.get'},
       );
       return response;
     } catch (error) {
@@ -288,6 +323,7 @@ export class GitHubApiClient {
         branch: input.branch,
       },
       idempotencyKey: `artifact:${input.path}:${input.sha ?? 'create'}`,
+      endpoint: 'contents.put',
     });
   }
 

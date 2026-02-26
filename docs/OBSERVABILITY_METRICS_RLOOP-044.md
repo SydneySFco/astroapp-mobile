@@ -8,6 +8,9 @@
 - `replay_quarantine_admin_action_total`
 - `replay_quarantine_idempotency_deduped_total`
 - `replay_quarantine_stale_conflict_total`
+- `github_api_attempt_count`
+- `github_api_rate_limit_hits`
+- `publisher_idempotent_dedupe_count`
 
 ## Standard Dimensions
 
@@ -15,6 +18,11 @@
 - `action`: `redrive | drop`
 - `outcome`: `accepted | deduped | stale_conflict | rejected`
 - `reason`: operasyonel reason code/string
+
+Canary publisher / GitHub API metricleri için zorunlu boyutlar:
+- `action`: `github_api | check_run | sticky_comment | artifact_sync | runtime`
+- `outcome`: `attempt | rate_limited | success | failure | dry_run | deduped`
+- `endpoint`: örn. `checks.create`, `issues.comments.update`, `contents.put`, `publisher.run`
 
 Opsiyonel:
 - `requestId`

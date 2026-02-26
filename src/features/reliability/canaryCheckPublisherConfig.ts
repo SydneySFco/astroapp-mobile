@@ -1,9 +1,11 @@
 import type {CanaryPolicyMode} from './canaryCheckPublisher';
 
 export type CanaryCheckPublisherRuntimeConfig = {
+  mode: 'dry' | 'live';
   policy: CanaryPolicyMode;
   checkName: string;
   stickyCommentEnabled: boolean;
+  artifactSyncEnabled: boolean;
 };
 
 export const DEFAULT_CANARY_CHECK_NAME = 'nonprod-db-canary / drift';
@@ -24,6 +26,11 @@ const parseBoolean = (value: string | undefined, fallback: boolean): boolean => 
   return fallback;
 };
 
+const resolveMode = (value: string | undefined): 'dry' | 'live' => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === 'live' ? 'live' : 'dry';
+};
+
 export const resolveCanaryCheckPublisherRuntimeConfig = (
   env: Record<string, string | undefined>,
 ): CanaryCheckPublisherRuntimeConfig => {
@@ -31,8 +38,10 @@ export const resolveCanaryCheckPublisherRuntimeConfig = (
   const checkName = env.CANARY_CHECK_NAME?.trim() || DEFAULT_CANARY_CHECK_NAME;
 
   return {
+    mode: resolveMode(env.CANARY_PUBLISHER_MODE),
     policy,
     checkName,
     stickyCommentEnabled: parseBoolean(env.CANARY_STICKY_COMMENT_ENABLED, true),
+    artifactSyncEnabled: parseBoolean(env.CANARY_ARTIFACT_SYNC_ENABLED, true),
   };
 };

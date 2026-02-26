@@ -50,9 +50,11 @@ File: `src/features/reliability/canaryCheckPublisherConfig.ts`
 
 Config çözümleme:
 
+- `CANARY_PUBLISHER_MODE=dry|live` (default: `dry`)
 - `CANARY_DRIFT_POLICY=warn|fail`
 - `CANARY_CHECK_NAME` (default: `nonprod-db-canary / drift`)
 - `CANARY_STICKY_COMMENT_ENABLED` (default: `true`)
+- `CANARY_ARTIFACT_SYNC_ENABLED` (default: `true`)
 
 ## RLOOP-052 Integration Update
 
@@ -90,3 +92,12 @@ File: `src/features/reliability/artifactStore.ts`
 - `GitHubArtifactStore` artık draft seviyesinde read/write akışına sahip
 - Path standardı: `<artifactNamePrefix>/<pointer.key>`
 - `exists(pointer)` read bazlı çalışır
+
+## RLOOP-053 Runtime Wiring Update
+
+File: `src/features/reliability/canaryPublisherRuntime.ts`
+
+- Check create/update + sticky comment upsert + artifact sync tek runtime akışında orkestra edilir
+- Dry mode (`CANARY_PUBLISHER_MODE=dry`) güvenli default olarak side-effect üretmez
+- `external_id` tabanlı dedupe guard ile duplicate publish baskılanır
+- Observability için `action/outcome/endpoint` dimension setiyle metric emission hazırlanmıştır
