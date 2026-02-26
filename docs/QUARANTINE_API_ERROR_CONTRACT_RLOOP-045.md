@@ -58,19 +58,3 @@ Aynı request tekrarında:
 
 Repository katmanı `QuarantineAdminApiError` fırlatır.
 HTTP handler katmanı bunu doğrudan status/code’ye mapler; unknown exception’lar `500 internal_error`a normalize edilir.
-
-## RLOOP-046 Güncellemesi — SQLSTATE Mapping
-
-DB-first idempotency + transactional RPC akışında SQLSTATE eşleşmesi:
-
-- `P0002` → `404 not_found`
-- `P0001` → `409 stale`
-- `23505` → `409 idempotent_duplicate`
-- diğer tüm DB hataları → `500 internal_error`
-
-Bu mapping repository katmanında normalize edilip API contract’ına taşınır.
-
-## RLOOP-046 Güncellemesi — Transaction Boundary
-
-`state transition` + `audit write` adımları tek DB transaction boundary’de yürütülür.
-Bu sayede yarım-yazım (state değişti ama audit yok / audit var ama state değişmedi) riski minimize edilir.

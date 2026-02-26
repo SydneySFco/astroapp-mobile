@@ -1,4 +1,4 @@
-# RLOOP-044 Observability Metrics — Quarantine Control Plane
+# RLOOP-044/RLOOP-045 Observability Metrics — Quarantine Control Plane
 
 ## Metric Names
 
@@ -20,6 +20,22 @@ Opsiyonel:
 - `requestId`
 - `replayId`
 
+## Error Contract → Outcome Mapping (RLOOP-045)
+
+- `idempotent_duplicate` -> `deduped`
+- `stale` -> `stale_conflict`
+- `unauthorized | bad_request | not_found | internal_error` -> `rejected`
+- başarılı transition -> `accepted`
+
+Bu mapping `action/outcome/reason` triad’ını API-level hata sözleşmesi ile hizalar.
+
+## Emit Noktaları
+
+- **POST redrive/drop accepted**: `accepted`
+- **POST redrive/drop duplicate requestId**: `deduped`
+- **POST redrive/drop stale transition**: `stale_conflict`
+- **authz/validation/not-found/internal failures**: `rejected`
+
 ## Sample Payload
 
 ```json
@@ -36,10 +52,3 @@ Opsiyonel:
   "observedAt": "2026-02-26T14:45:00.000Z"
 }
 ```
-
-## Outcome Guidance
-
-- `accepted`: state transition başarıyla işlendi
-- `deduped`: aynı requestId daha önce işlendi, tekrar side-effect uygulanmadı
-- `stale_conflict`: pending_review dışındaki state nedeniyle optimistic transition reddedildi
-- `rejected`: validation/authz sebebiyle endpoint tarafından reddedildi
