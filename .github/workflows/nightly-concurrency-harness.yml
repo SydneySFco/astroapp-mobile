@@ -15,6 +15,14 @@ on:
         description: "Fail threshold for stale_conflict_ratio"
         required: false
         default: "0.3000"
+      reliability_warn_threshold:
+        description: "Warn threshold for macro ECE"
+        required: false
+        default: "0.0800"
+      reliability_fail_threshold:
+        description: "Fail threshold for macro ECE"
+        required: false
+        default: "0.1200"
   schedule:
     - cron: "30 2 * * *" # 02:30 UTC nightly
 
@@ -50,6 +58,25 @@ jobs:
           chmod +x scripts/concurrency-harness-rloop029.sh
           scripts/concurrency-harness-rloop029.sh
 
+      - name: Evaluate reliability + enforce gate
+        env:
+          RELIABILITY_WARN_THRESHOLD: ${{ github.event.inputs.reliability_warn_threshold || '0.0800' }}
+          RELIABILITY_FAIL_THRESHOLD: ${{ github.event.inputs.reliability_fail_threshold || '0.1200' }}
+        run: |
+          python3 scripts/eval-reliability-rloop036.py \
+            --input reports/incidents-groundtruth.sample.jsonl \
+            --bins 10 \
+            --time-field timestamp \
+            --slice-by day \
+            --out reports/reliability-eval-rloop036.json
+
+          python3 scripts/reliability-gate-rloop037.py \
+            --input reports/reliability-eval-rloop036.json \
+            --warn-threshold "$RELIABILITY_WARN_THRESHOLD" \
+            --fail-threshold "$RELIABILITY_FAIL_THRESHOLD" \
+            --out-json reports/reliability-gate-rloop037.json \
+            --out-md reports/reliability-gate-rloop037.md
+
       - name: Upload harness report + history
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,6 +85,9 @@ jobs:
           path: |
             reports/concurrency-harness-*.json
             reports/concurrency-harness-history.ndjson
+            reports/reliability-eval-rloop036.json
+            reports/reliability-gate-rloop037.json
+            reports/reliability-gate-rloop037.md
 
       - name: Notify webhook (optional)
         if: always() && secrets.CONCURRENCY_HARNESS_WEBHOOK_URL != ''
