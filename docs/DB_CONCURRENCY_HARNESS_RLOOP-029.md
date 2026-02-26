@@ -1,4 +1,4 @@
-# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-031 update)
+# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-032 update)
 
 ## Purpose
 `finalize_reconcile_job` concurrency davranışını gerçek RPC outcome’larına bağlamak ve nightly CI’ı assertion-fail odaklı çalıştırmak.
@@ -47,9 +47,33 @@ Standart rapora eklendi:
 - `seed.*` (namespace/key/job/lease/revision/seed_sql_applied)
 - `schema_lifecycle.*` (ephemeral enabled/create/drop durumu)
 
-Historical karşılaştırma:
-- Script, `reports/concurrency-harness-history.ndjson` dosyasına her run raporunu append eder.
-- `trend.previous_stale_conflict_ratio` alanı son run’dan okunur.
+### 1) Real parallel finalize fan-out
+- Harness artık her iteration’da `WORKERS` kadar finalize çağrısını **eşzamanlı** (background process) çalıştırır.
+- Iteration bariyeri sayesinde gerçek yarış koşulu korunur: tüm worker’lar bitmeden bir sonraki iterasyona geçilmez.
+
+### 2) Latency metrics
+Report’a eklendi:
+- `latency_ms.p50`
+- `latency_ms.p95`
+- `latency_ms.p99`
+
+### 3) Consistency metrics
+Report’a eklendi:
+- `consistency.sequence_match_ratio`
+- `consistency.sequence_matches`
+- `consistency.sequence_total`
+- `consistency.by_worker_slot[]`
+
+### 4) Retry/idempotency drift
+Report’a eklendi:
+- `retry_idempotency_drift.idempotent_ratio_by_iteration[]`
+- `retry_idempotency_drift.idempotent_ratio_drift_delta`
+- `retry_idempotency_drift.retry_outcomes_after_first_applied`
+
+### 5) Optional new fail gates
+- `FAIL_ON_P95_LATENCY_BREACH` + `P95_LATENCY_FAIL_THRESHOLD_MS`
+- `FAIL_ON_CONSISTENCY_BREACH` + `CONSISTENCY_MIN_RATIO`
+- `FAIL_ON_IDEMPOTENCY_DRIFT_BREACH` + `IDEMPOTENCY_DRIFT_MAX_DELTA`
 
 ---
 
