@@ -77,6 +77,15 @@ export type ReconcileJobRepository = {
   ) => Promise<void>;
 };
 
+export type DeadLetterReplayHook = (
+  job: Pick<ReconcileJob, 'id' | 'reportId' | 'attemptCount' | 'maxAttempts'>,
+  reason: {errorCode: string; errorMessage: string},
+) => Promise<void>;
+
+export type FinalizeReconcileJobOptions = {
+  onDeadLettered?: DeadLetterReplayHook;
+};
+
 export const claimNextReconcileJob = async (
   repository: ReconcileJobRepository,
   leaseDurationMs: number,
@@ -88,9 +97,10 @@ export type ReconcileFinalizeInput =
 
 export const finalizeReconcileJob = async (
   repository: ReconcileJobRepository,
-  job: Pick<ReconcileJob, 'id' | 'attemptCount' | 'maxAttempts'>,
+  job: Pick<ReconcileJob, 'id' | 'reportId' | 'attemptCount' | 'maxAttempts'>,
   input: ReconcileFinalizeInput,
   now = new Date(),
+  options?: FinalizeReconcileJobOptions,
 ): Promise<RetryDecision | null> => {
   if (input.result === 'succeeded') {
     await repository.markSucceeded(job.id, now.toISOString());
@@ -113,5 +123,13 @@ export const finalizeReconcileJob = async (
     failedInput.errorMessage,
     decision,
   );
+
+  if (decision.nextStatus === 'dead_lettered' && options?.onDeadLettered) {
+    await options.onDeadLettered(job, {
+      errorCode: failedInput.errorCode,
+      errorMessage: failedInput.errorMessage,
+    });
+  }
+
   return decision;
 };
