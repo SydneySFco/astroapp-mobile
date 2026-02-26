@@ -2,7 +2,6 @@ import {
   claimNextReconcileJob,
   finalizeReconcileJob,
   type DeadLetterReplayHook,
-  type FinalizeOutcome,
   type ReconcileFinalizeInput,
   type ReconcileJob,
   type ReconcileJobRepository,
@@ -16,25 +15,15 @@ export type ReconcileTelemetryEvent =
       reportId: string;
       attemptCount: number;
       leasedUntil?: string;
-      leaseToken?: string;
-      leaseRevision: number;
     }
   | {
       type: 'reconcile_job_finalized';
       jobId: string;
       reportId: string;
       result: 'succeeded' | 'failed';
-      outcome: Exclude<FinalizeOutcome, 'stale_blocked'>;
       nextStatus?: RetryDecision['nextStatus'];
       nextRetryAfter?: string;
       errorCode?: string;
-    }
-  | {
-      type: 'reconcile_job_finalize_stale_conflict';
-      jobId: string;
-      reportId: string;
-      leaseRevision: number;
-      counterName: 'reconcile_job_finalize_stale_conflict_count';
     };
 
 export type ReconcileRuntimeDeps = {
@@ -61,19 +50,6 @@ const toFailureInput = (error: unknown): ReconcileFinalizeInput => {
   };
 };
 
-const emitStaleFinalizeConflict = async (
-  deps: ReconcileRuntimeDeps,
-  job: Pick<ReconcileJob, 'id' | 'reportId' | 'leaseRevision'>,
-) => {
-  await deps.emitTelemetry?.({
-    type: 'reconcile_job_finalize_stale_conflict',
-    jobId: job.id,
-    reportId: job.reportId,
-    leaseRevision: job.leaseRevision,
-    counterName: 'reconcile_job_finalize_stale_conflict_count',
-  });
-};
-
 export const runReconcileWorkerTick = async (
   deps: ReconcileRuntimeDeps,
 ): Promise<{claimed: boolean; decision: RetryDecision | null}> => {
@@ -89,14 +65,12 @@ export const runReconcileWorkerTick = async (
     reportId: job.reportId,
     attemptCount: job.attemptCount,
     leasedUntil: job.leasedUntil,
-    leaseToken: job.leaseToken,
-    leaseRevision: job.leaseRevision,
   });
 
   try {
     await deps.executeJob(job);
 
-    const finalizeResult = await finalizeReconcileJob(
+    const decision = await finalizeReconcileJob(
       deps.repository,
       job,
       {result: 'succeeded'},
@@ -104,27 +78,21 @@ export const runReconcileWorkerTick = async (
       {onDeadLettered: deps.onDeadLettered},
     );
 
-    if (finalizeResult.outcome === 'stale_blocked') {
-      await emitStaleFinalizeConflict(deps, job);
-      return {claimed: true, decision: null};
-    }
-
     await deps.emitTelemetry?.({
       type: 'reconcile_job_finalized',
       jobId: job.id,
       reportId: job.reportId,
       result: 'succeeded',
-      outcome: finalizeResult.outcome,
     });
 
-    return {claimed: true, decision: finalizeResult.decision};
+    return {claimed: true, decision};
   } catch (error) {
     const input = toFailureInput(error) as Extract<
       ReconcileFinalizeInput,
       {result: 'failed'}
     >;
 
-    const finalizeResult = await finalizeReconcileJob(
+    const decision = await finalizeReconcileJob(
       deps.repository,
       job,
       input,
@@ -132,23 +100,17 @@ export const runReconcileWorkerTick = async (
       {onDeadLettered: deps.onDeadLettered},
     );
 
-    if (finalizeResult.outcome === 'stale_blocked') {
-      await emitStaleFinalizeConflict(deps, job);
-      return {claimed: true, decision: null};
-    }
-
     await deps.emitTelemetry?.({
       type: 'reconcile_job_finalized',
       jobId: job.id,
       reportId: job.reportId,
       result: 'failed',
-      outcome: finalizeResult.outcome,
-      nextStatus: finalizeResult.decision?.nextStatus,
-      nextRetryAfter: finalizeResult.decision?.nextRetryAfter,
+      nextStatus: decision?.nextStatus,
+      nextRetryAfter: decision?.nextRetryAfter,
       errorCode: input.errorCode,
     });
 
-    return {claimed: true, decision: finalizeResult.decision};
+    return {claimed: true, decision};
   }
 };
 
