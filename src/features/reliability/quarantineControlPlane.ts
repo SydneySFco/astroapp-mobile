@@ -1,3 +1,9 @@
+import {
+  QuarantineAdminApiError,
+  type QuarantineAdminErrorPayload,
+  toQuarantineAdminErrorPayload,
+} from './quarantineAdminErrors';
+
 export type QuarantineStatus = 'pending_review' | 'redriven' | 'dropped';
 
 export type QuarantineReason =
@@ -83,14 +89,6 @@ export type QuarantineAdminRepository = {
 
 export type QuarantineAdminRole = 'admin_ops' | 'admin_approver';
 
-export type QuarantineAdminUnauthorizedError = {
-  error: {
-    code: 'QUARANTINE_ADMIN_UNAUTHORIZED';
-    message: string;
-    requiredAnyRole: QuarantineAdminRole[];
-  };
-};
-
 export type QuarantineAdminContext = {
   actorId?: string;
   roles?: string[];
@@ -130,30 +128,42 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
-const unauthorized = (
-  requiredAnyRole: QuarantineAdminRole[],
-): QuarantineAdminResponse<QuarantineAdminUnauthorizedError> => ({
-  status: 403,
+const errorResponse = (
+  status: number,
+  code: ConstructorParameters<typeof QuarantineAdminApiError>[0]['code'],
+  message: string,
+  details?: Record<string, unknown>,
+): QuarantineAdminResponse<QuarantineAdminErrorPayload> => ({
+  status,
   data: {
     error: {
-      code: 'QUARANTINE_ADMIN_UNAUTHORIZED',
-      message: 'Quarantine admin role required',
-      requiredAnyRole,
+      code,
+      message,
+      details,
     },
   },
 });
+
+const unauthorized = (requiredAnyRole: QuarantineAdminRole[]): QuarantineAdminResponse<QuarantineAdminErrorPayload> =>
+  errorResponse(403, 'unauthorized', 'Quarantine admin role required', {requiredAnyRole});
 
 const hasAnyRole = (context: QuarantineAdminContext | undefined, roles: QuarantineAdminRole[]): boolean => {
   const userRoles = context?.roles ?? [];
   return roles.some(role => userRoles.includes(role));
 };
 
+const mapUnknownError = (error: unknown): QuarantineAdminResponse<QuarantineAdminErrorPayload> => {
+  if (error instanceof QuarantineAdminApiError) {
+    return {status: error.status, data: toQuarantineAdminErrorPayload(error)};
+  }
+
+  return errorResponse(500, 'internal_error', 'Unexpected quarantine admin error');
+};
+
 export const listQuarantinedHandler = async (
   req: QuarantineAdminRequest<Record<string, string>, Record<string, unknown>>,
   deps: {readModel: QuarantineControlPlaneReadModel},
-): Promise<
-  QuarantineAdminResponse<{items: QuarantineListItem[]} | {error: string} | QuarantineAdminUnauthorizedError>
-> => {
+): Promise<QuarantineAdminResponse<{items: QuarantineListItem[]} | QuarantineAdminErrorPayload>> => {
   const requiredAnyRole: QuarantineAdminRole[] = ['admin_ops', 'admin_approver'];
   if (!hasAnyRole(req.context, requiredAnyRole)) {
     return unauthorized(requiredAnyRole);
@@ -166,7 +176,7 @@ export const listQuarantinedHandler = async (
   const offset = parseOptionalNumber(req.query?.offset);
 
   if ((limit !== undefined && limit < 1) || (offset !== undefined && offset < 0)) {
-    return {status: 400, data: {error: 'Invalid pagination query params'}};
+    return errorResponse(400, 'bad_request', 'Invalid pagination query params');
   }
 
   if (
@@ -175,7 +185,7 @@ export const listQuarantinedHandler = async (
     status !== 'redriven' &&
     status !== 'dropped'
   ) {
-    return {status: 400, data: {error: 'Invalid status filter'}};
+    return errorResponse(400, 'bad_request', 'Invalid status filter');
   }
 
   const rows = await deps.readModel.listQuarantined({status, route, reason, limit, offset});
@@ -189,9 +199,7 @@ export const listQuarantinedHandler = async (
 export const getQuarantinedDetailHandler = async (
   req: QuarantineAdminRequest<{replayId: string}>,
   deps: {readModel: QuarantineControlPlaneReadModel},
-): Promise<
-  QuarantineAdminResponse<{item: QuarantineDetail} | {error: string} | QuarantineAdminUnauthorizedError>
-> => {
+): Promise<QuarantineAdminResponse<{item: QuarantineDetail} | QuarantineAdminErrorPayload>> => {
   const requiredAnyRole: QuarantineAdminRole[] = ['admin_ops', 'admin_approver'];
   if (!hasAnyRole(req.context, requiredAnyRole)) {
     return unauthorized(requiredAnyRole);
@@ -199,12 +207,12 @@ export const getQuarantinedDetailHandler = async (
 
   const replayId = parseOptionalString(req.params?.replayId);
   if (!replayId) {
-    return {status: 400, data: {error: 'replayId is required'}};
+    return errorResponse(400, 'bad_request', 'replayId is required');
   }
 
   const row = await deps.readModel.getQuarantinedDetail(replayId);
   if (!row) {
-    return {status: 404, data: {error: 'Quarantine record not found'}};
+    return errorResponse(404, 'not_found', 'Quarantine record not found');
   }
 
   return {
@@ -224,9 +232,7 @@ type QuarantineActionBody = {
 export const redriveQuarantinedHandler = async (
   req: QuarantineAdminRequest<{replayId: string}, Record<string, unknown>, QuarantineActionBody>,
   deps: {repository: QuarantineAdminRepository},
-): Promise<
-  QuarantineAdminResponse<QuarantineActionResult | {error: string} | QuarantineAdminUnauthorizedError>
-> => {
+): Promise<QuarantineAdminResponse<QuarantineActionResult | QuarantineAdminErrorPayload>> => {
   const requiredAnyRole: QuarantineAdminRole[] = ['admin_approver'];
   if (!hasAnyRole(req.context, requiredAnyRole)) {
     return unauthorized(requiredAnyRole);
@@ -234,7 +240,7 @@ export const redriveQuarantinedHandler = async (
 
   const replayId = parseOptionalString(req.params?.replayId);
   if (!replayId) {
-    return {status: 400, data: {error: 'replayId is required'}};
+    return errorResponse(400, 'bad_request', 'replayId is required');
   }
 
   const actorId = parseOptionalString(req.body?.actorId) ?? req.context?.actorId;
@@ -244,24 +250,26 @@ export const redriveQuarantinedHandler = async (
   const note = parseOptionalString(req.body?.note);
 
   if (!actorId || !reason || !approvalRef) {
-    return {status: 400, data: {error: 'actorId, reason and approvalRef are required'}};
+    return errorResponse(400, 'bad_request', 'actorId, reason and approvalRef are required');
   }
 
-  const result = await deps.repository.redrive({
-    replayId,
-    audit: {actorId, reason, approvalRef, requestId},
-    note,
-  });
+  try {
+    const result = await deps.repository.redrive({
+      replayId,
+      audit: {actorId, reason, approvalRef, requestId},
+      note,
+    });
 
-  return {status: 202, data: result};
+    return {status: 202, data: result};
+  } catch (error) {
+    return mapUnknownError(error);
+  }
 };
 
 export const dropQuarantinedHandler = async (
   req: QuarantineAdminRequest<{replayId: string}, Record<string, unknown>, QuarantineActionBody>,
   deps: {repository: QuarantineAdminRepository},
-): Promise<
-  QuarantineAdminResponse<QuarantineActionResult | {error: string} | QuarantineAdminUnauthorizedError>
-> => {
+): Promise<QuarantineAdminResponse<QuarantineActionResult | QuarantineAdminErrorPayload>> => {
   const requiredAnyRole: QuarantineAdminRole[] = ['admin_approver'];
   if (!hasAnyRole(req.context, requiredAnyRole)) {
     return unauthorized(requiredAnyRole);
@@ -269,7 +277,7 @@ export const dropQuarantinedHandler = async (
 
   const replayId = parseOptionalString(req.params?.replayId);
   if (!replayId) {
-    return {status: 400, data: {error: 'replayId is required'}};
+    return errorResponse(400, 'bad_request', 'replayId is required');
   }
 
   const actorId = parseOptionalString(req.body?.actorId) ?? req.context?.actorId;
@@ -279,23 +287,77 @@ export const dropQuarantinedHandler = async (
   const note = parseOptionalString(req.body?.note);
 
   if (!actorId || !reason || !approvalRef) {
-    return {status: 400, data: {error: 'actorId, reason and approvalRef are required'}};
+    return errorResponse(400, 'bad_request', 'actorId, reason and approvalRef are required');
   }
 
-  const result = await deps.repository.forceDrop({
-    replayId,
-    audit: {actorId, reason, approvalRef, requestId},
-    note,
-  });
+  try {
+    const result = await deps.repository.forceDrop({
+      replayId,
+      audit: {actorId, reason, approvalRef, requestId},
+      note,
+    });
 
-  return {status: 202, data: result};
+    return {status: 202, data: result};
+  } catch (error) {
+    return mapUnknownError(error);
+  }
 };
 
 export const quarantineMetricNames = {
   volume: 'replay_quarantine_volume_total',
   redriveSuccessRate: 'replay_quarantine_redrive_success_rate',
   dropRate: 'replay_quarantine_drop_rate',
+  adminActionTotal: 'replay_quarantine_admin_action_total',
+  idempotencyDedupedTotal: 'replay_quarantine_idempotency_deduped_total',
+  staleConflictTotal: 'replay_quarantine_stale_conflict_total',
 } as const;
+
+export type QuarantineAdminMetricEvent = {
+  metric: typeof quarantineMetricNames.adminActionTotal;
+  value: number;
+  dimensions: {
+    action: 'redrive' | 'drop';
+    outcome: 'accepted' | 'deduped' | 'stale_conflict' | 'rejected';
+    reason: string;
+  };
+  requestId?: string;
+  replayId: string;
+  observedAt: string;
+};
+
+export const createQuarantineAdminMetricEvent = (input: {
+  action: 'redrive' | 'drop';
+  outcome: 'accepted' | 'deduped' | 'stale_conflict' | 'rejected';
+  reason: string;
+  replayId: string;
+  requestId?: string;
+  observedAt?: string;
+}): QuarantineAdminMetricEvent => ({
+  metric: quarantineMetricNames.adminActionTotal,
+  value: 1,
+  dimensions: {
+    action: input.action,
+    outcome: input.outcome,
+    reason: input.reason,
+  },
+  requestId: input.requestId,
+  replayId: input.replayId,
+  observedAt: input.observedAt ?? new Date().toISOString(),
+});
+
+export const mapActionErrorToMetricOutcome = (
+  errorCode: string | undefined,
+): QuarantineAdminMetricEvent['dimensions']['outcome'] => {
+  if (errorCode === 'idempotent_duplicate') {
+    return 'deduped';
+  }
+
+  if (errorCode === 'stale') {
+    return 'stale_conflict';
+  }
+
+  return 'rejected';
+};
 
 export const computeQuarantineRates = (input: {
   quarantinedCount: number;
