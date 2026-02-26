@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "verify:required-check-contexts:rloop058": "node scripts/verify-required-check-contexts-rloop058.js"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.84.0",

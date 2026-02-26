@@ -8,7 +8,10 @@ on:
 
 jobs:
   quality-gates:
+    name: required-check / ci-quality-gates
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -34,3 +37,11 @@ jobs:
 
       - name: Type check
         run: yarn typecheck
+
+      - name: Required-check context drift guard (RLOOP-058)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRIFT_GUARD_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
+          API_ERROR_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
+        run: |
+          yarn verify:required-check-contexts:rloop058 --branch master --policy "$DRIFT_GUARD_POLICY" --on-api-error "$API_ERROR_POLICY"
