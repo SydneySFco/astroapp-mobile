@@ -68,27 +68,33 @@ jobs:
 
           today="$(date -u +%Y-%m-%d)"
 
-          python3 scripts/build-groundtruth-artifact-rloop038.py \
-            --input reports/incidents-groundtruth.sample.jsonl \
+          python3 scripts/build-groundtruth-artifact-rloop039.py \
+            --source-type jsonl \
+            --source-uri reports/incidents-groundtruth.sample.jsonl \
+            --watermark-field timestamp \
+            --watermark-state reports/groundtruth-watermarks/nightly.json \
             --cadence nightly \
             --snapshot-date "$today" \
             --global-min-samples 25 \
             --min-class-samples "unknown:30" \
             --out "reports/groundtruth-artifacts/nightly/$today/groundtruth-snapshot.json"
 
-          python3 scripts/validate-groundtruth-artifact-schema-rloop038.py \
+          python3 scripts/validate-groundtruth-artifact-schema-rloop039.py \
             --input "reports/groundtruth-artifacts/nightly/$today/groundtruth-snapshot.json"
 
           if [ "$(date -u +%u)" = "7" ]; then
-            python3 scripts/build-groundtruth-artifact-rloop038.py \
-              --input reports/incidents-groundtruth.sample.jsonl \
+            python3 scripts/build-groundtruth-artifact-rloop039.py \
+              --source-type jsonl \
+              --source-uri reports/incidents-groundtruth.sample.jsonl \
+              --watermark-field timestamp \
+              --watermark-state reports/groundtruth-watermarks/weekly.json \
               --cadence weekly \
               --snapshot-date "$today" \
               --global-min-samples 25 \
               --min-class-samples "unknown:30" \
               --out "reports/groundtruth-artifacts/weekly/$today/groundtruth-snapshot.json"
 
-            python3 scripts/validate-groundtruth-artifact-schema-rloop038.py \
+            python3 scripts/validate-groundtruth-artifact-schema-rloop039.py \
               --input "reports/groundtruth-artifacts/weekly/$today/groundtruth-snapshot.json"
           fi
 
@@ -99,17 +105,17 @@ jobs:
             --out-json reports/reliability-gate-rloop037.json \
             --out-md reports/reliability-gate-rloop037.md
 
-          python3 scripts/route-drift-alerts-rloop038.py \
+          python3 scripts/route-drift-alerts-rloop039.py \
             --input reports/reliability-eval-rloop036.json \
             --window 7 \
             --warn-delta 0.015 \
             --critical-delta 0.030 \
             --warn-abs "$RELIABILITY_WARN_THRESHOLD" \
             --critical-abs "$RELIABILITY_FAIL_THRESHOLD" \
-            --warn-route "reliability-warn-channel" \
-            --critical-route "reliability-critical-channel" \
-            --out-json reports/drift-alert-routing-rloop038.json \
-            --out-md reports/drift-alert-routing-rloop038.md
+            --suppression-window-minutes 60 \
+            --out-json reports/drift-alert-routing-rloop039.json \
+            --out-slack reports/drift-alert-routing-rloop039.slack.json \
+            --out-webhook reports/drift-alert-routing-rloop039.webhook.json
 
       - name: Upload harness report + history
         if: always()
@@ -122,8 +128,11 @@ jobs:
             reports/reliability-eval-rloop036.json
             reports/reliability-gate-rloop037.json
             reports/reliability-gate-rloop037.md
-            reports/drift-alert-routing-rloop038.json
-            reports/drift-alert-routing-rloop038.md
+            reports/drift-alert-routing-rloop039.json
+            reports/drift-alert-routing-rloop039.slack.json
+            reports/drift-alert-routing-rloop039.webhook.json
+            reports/drift-alert-state-rloop039.json
+            reports/groundtruth-watermarks/*.json
             reports/groundtruth-artifacts/**/*.json
 
       - name: Notify webhook (optional)
