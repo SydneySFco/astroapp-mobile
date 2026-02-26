@@ -122,6 +122,36 @@ Fields (minimum):
 
 ---
 
+## RLOOP-016 Wiring Status
+
+Aktif bağlanan Supabase query/mutation noktaları (`src/features/reports/reportsApi.ts`):
+
+- `getReportCatalog`
+  - Table: `reports_catalog`
+  - Fields: `id`, `slug`, `title`, `description`, `price_cents`, `currency`, `is_active`
+  - Mapping:
+    - `description` -> `shortDescription` / `preview`
+    - `price_cents` -> `price` (major unit)
+
+- `getPurchasedReports`
+  - Table: `user_reports`
+  - Fields: `report_catalog_id`, `created_at`
+  - Mapping:
+    - `report_catalog_id` -> `reportId`
+    - `created_at` -> `purchasedAt`
+
+- `getReportDetail`
+  - Tables: `reports_catalog` + `user_reports`
+  - Detail için catalog alanları ve varsa `user_reports.content_json` okunur.
+
+- `purchaseReport`
+  - Table: `report_orders`
+  - Insert fields: `report_catalog_id`, `status='pending'`
+
+Notlar:
+- Supabase env yoksa (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) local fallback catalog ile app akışı korunur.
+- UI, reports ekranlarında `reportsSlice` mock catalog yerine `reportsApi` query cache kullanır.
+
 ## Open Items
 
 1. SQL migration scripts hazırlanmalı.
