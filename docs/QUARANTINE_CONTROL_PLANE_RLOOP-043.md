@@ -130,3 +130,63 @@ RLOOP-044’te hedef:
 - Supabase adapter wiring
 - HTTP router entegrasyonu
 - gerçek metric emit path
+
+---
+
+## 7) RLOOP-044 Wiring Notes (Applied Draft)
+
+### 7.1 Supabase Adapter Binding
+
+Yeni draft adapter dosyası:
+- `src/features/reliability/supabaseQuarantineControlPlane.ts`
+
+Read-model:
+- `listQuarantined(filters)` → `replay_quarantine_messages`
+- `getQuarantinedDetail(replayId)` → message + `replay_quarantine_audit_log`
+
+Write-model:
+- `redrive(input)` / `forceDrop(input)`
+- Durum geçişi `status = pending_review` şartlı update ile yapılır (optimistic guard)
+- İki audit event yazılır:
+  - `manual_redrive_requested` / `force_drop_requested`
+  - `status_changed`
+
+### 7.2 Endpoint Router Wiring
+
+Yeni minimal router:
+- `src/features/reliability/quarantineAdminRouter.ts`
+
+Route map:
+- `GET /admin/ops/reliability/quarantine`
+- `GET /admin/ops/reliability/quarantine/:replayId`
+- `POST /admin/ops/reliability/quarantine/:replayId/redrive`
+- `POST /admin/ops/reliability/quarantine/:replayId/drop`
+
+`requestId` çözümleme sırası:
+1. body.requestId
+2. `idempotency-key` header
+3. `x-request-id` header
+
+### 7.3 Idempotency / Concurrency Notes
+
+Dedup stratejisi:
+- requestId sağlandıysa, `replay_id + action + request_id` ile audit tablosundan önceki işlem kontrol edilir
+- önceki işlemde `metadata.processedAt` varsa aynı sonucu döndürülerek idempotent davranış sağlanır
+
+Stale guard:
+- update sadece `pending_review` satırı için yapılır
+- eşleşme yoksa `quarantine_stale_or_not_found`
+- API layer bu hatayı `stale_conflict` metric outcome’una mapleyebilir
+
+### 7.4 Observability Hardening
+
+Yeni metricler:
+- `replay_quarantine_admin_action_total`
+- `replay_quarantine_idempotency_deduped_total`
+- `replay_quarantine_stale_conflict_total`
+
+Standart dimension set:
+- `action`, `outcome`, `reason`
+
+Referans:
+- `docs/OBSERVABILITY_METRICS_RLOOP-044.md`
