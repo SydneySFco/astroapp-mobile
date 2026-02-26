@@ -5,6 +5,7 @@ import {useDispatch, useSelector} from 'react-redux';
 import {trackEvent} from '../features/analytics/analytics';
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
 import {
+  ReportLifecycleStatus,
   useGetReportCatalogQuery,
   useGetPurchasedReportsQuery,
   usePurchaseReportMutation,
@@ -44,6 +45,9 @@ export function App() {
   const [screen, setScreen] = useState<AppScreen>('home');
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
   const [localPurchasedReportIds, setLocalPurchasedReportIds] = useState<string[]>([]);
+  const [localLifecycleByReportId, setLocalLifecycleByReportId] = useState<
+    Record<string, ReportLifecycleStatus>
+  >({});
 
   const {
     data: catalogData,
@@ -87,18 +91,22 @@ export function App() {
 
     try {
       await purchaseReport({reportCatalogId: activeReportId}).unwrap();
-    } catch {
+      setLocalPurchasedReportIds(current =>
+        current.includes(activeReportId) ? current : [...current, activeReportId],
+      );
+      setLocalLifecycleByReportId(current => ({...current, [activeReportId]: 'queued'}));
+      setScreen('my_reports');
+      return;
+    } catch (error) {
+      const status = (error as {status?: number})?.status;
+      const reason = status === 401 ? 'auth_401' : status === 403 ? 'auth_403' : status === 408 ? 'timeout' : 'purchase_mutation_failed';
+
       trackEvent('reports_error', {
         scope: 'checkout',
         report_id: activeReportId,
-        reason: 'purchase_mutation_failed',
+        reason,
       });
     }
-
-    setLocalPurchasedReportIds(current =>
-      current.includes(activeReportId) ? current : [...current, activeReportId],
-    );
-    setScreen('my_reports');
   };
 
   const openSettings = () => {
@@ -162,7 +170,15 @@ export function App() {
             onClose={() => setScreen('home')}
           />
         ) : screen === 'report_read' && activeReport ? (
-          <ReportReadScreen report={activeReport} onBack={() => setScreen('my_reports')} />
+          <ReportReadScreen
+            reportId={activeReport.id}
+            fallbackReportTitle={activeReport.title}
+            localLifecycleStatus={localLifecycleByReportId[activeReport.id]}
+            onLifecycleStatusChange={status =>
+              setLocalLifecycleByReportId(current => ({...current, [activeReport.id]: status}))
+            }
+            onBack={() => setScreen('my_reports')}
+          />
         ) : screen === 'settings' ? (
           <SettingsScreen
             onOpenLegal={() => setScreen('legal')}
