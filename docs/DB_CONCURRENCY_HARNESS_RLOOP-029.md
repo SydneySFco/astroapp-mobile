@@ -4,7 +4,7 @@
 `finalize_reconcile_job` concurrency davranışını gerçek RPC outcome’larına bağlamak ve nightly CI’ı assertion-fail odaklı çalıştırmak.
 
 Hedef metrikler:
-- outcome dağılımı: `applied:idempotent:stale_blocked:unknown`
+- outcome dağılımı: `applied:idempotent:stale_blocked`
 - stale conflict ratio
 - run-to-run trend notu (önceki run ile karşılaştırma)
 
@@ -83,14 +83,13 @@ Workflow’de opsiyonel webhook adımı eklendi:
 
 ---
 
-## CI Integration
+## CI Integration Draft
+
 Workflow: `.github/workflows/nightly-concurrency-harness.yml`
 
-Akış:
-1. install
-2. harness run (strict assertions)
-3. artifact upload (`*.json` + `history.ndjson`)
-4. optional webhook notify
+Trigger:
+- nightly schedule (UTC)
+- manual dispatch
 
 Secrets/vars:
 - Required (rpc_http): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
