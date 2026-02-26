@@ -9,15 +9,19 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 1) {
     const token = argv[i];
     if (!token.startsWith('--')) continue;
+
     const key = token.slice(2);
     const next = argv[i + 1];
+
     if (!next || next.startsWith('--')) {
-      args[key] = 'true';
+      args[key] = true;
       continue;
     }
+
     args[key] = next;
     i += 1;
   }
+
   return args;
 }
 
@@ -25,8 +29,15 @@ function normalize(value) {
   return value.trim().replace(/^['"]|['"]$/g, '');
 }
 
-function inferOwnerRepo(explicitOwner, explicitRepo) {
-  if (explicitOwner && explicitRepo) return { owner: explicitOwner, repo: explicitRepo };
+function inferOwnerRepo(explicitRepo, explicitOwner, explicitRepoName) {
+  if (explicitRepo && explicitRepo.includes('/')) {
+    const [owner, repo] = explicitRepo.split('/');
+    if (owner && repo) return { owner, repo };
+  }
+
+  if (explicitOwner && explicitRepoName) {
+    return { owner: explicitOwner, repo: explicitRepoName };
+  }
 
   const repository = process.env.GITHUB_REPOSITORY || '';
   const [envOwner, envRepo] = repository.split('/');
@@ -43,52 +54,63 @@ function inferOwnerRepo(explicitOwner, explicitRepo) {
       remoteRepo = match[2];
     }
   } catch (_error) {
-    // ignore and fall back to env/explicit values
+    // ignore and fall back
   }
 
   return {
     owner: explicitOwner || envOwner || remoteOwner,
-    repo: explicitRepo || envRepo || remoteRepo,
+    repo: explicitRepoName || envRepo || remoteRepo,
   };
 }
 
-async function githubGetJson(url, token) {
+async function githubRequestJson(url, method, token, body) {
   const response = await fetch(url, {
-    method: 'GET',
+    method,
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'astroapp-rloop058-context-guard',
+      'User-Agent': 'astroapp-rloop059-required-check-autofix',
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   const bodyText = await response.text();
-  const body = bodyText ? JSON.parse(bodyText) : {};
+  const payload = bodyText ? JSON.parse(bodyText) : {};
 
   if (!response.ok) {
-    const message = body && body.message ? body.message : response.statusText;
+    const message = payload && payload.message ? payload.message : response.statusText;
     const error = new Error(`GitHub API ${response.status} ${response.statusText}: ${message}`);
     error.status = response.status;
     throw error;
   }
 
-  return body;
+  return payload;
 }
 
-async function fetchRequiredContexts({ owner, repo, branch, token }) {
+async function fetchBranchProtection({ owner, repo, branch, token }) {
   const url = `https://api.github.com/repos/${owner}/${repo}/branches/${branch}/protection`;
-  const payload = await githubGetJson(url, token);
+  return githubRequestJson(url, 'GET', token);
+}
 
-  const checks = payload?.required_status_checks?.checks;
+function extractRequiredContexts(protection) {
+  const checks = protection?.required_status_checks?.checks;
   if (Array.isArray(checks) && checks.length > 0) {
     return checks.map((check) => check.context).filter(Boolean);
   }
 
-  const contexts = payload?.required_status_checks?.contexts;
+  const contexts = protection?.required_status_checks?.contexts;
   if (Array.isArray(contexts)) return contexts;
 
   return [];
+}
+
+async function patchRequiredContexts({ owner, repo, branch, token, contexts, strict }) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/branches/${branch}/protection/required_status_checks`;
+  return githubRequestJson(url, 'PATCH', token, {
+    strict,
+    contexts,
+  });
 }
 
 function parseWorkflowContextsFromFile(fileContent) {
@@ -162,8 +184,8 @@ function collectWorkflowContexts(workflowsDir) {
     const fullPath = path.join(workflowsDir, entry.name);
     const fileContent = fs.readFileSync(fullPath, 'utf8');
 
-    for (const ctx of parseWorkflowContextsFromFile(fileContent)) {
-      contexts.add(ctx);
+    for (const context of parseWorkflowContextsFromFile(fileContent)) {
+      contexts.add(context);
     }
   }
 
@@ -220,10 +242,37 @@ function buildRenameSuggestions(missingInWorkflows, extraNotRequired) {
   return suggestions;
 }
 
+function dedupe(list) {
+  return Array.from(new Set(list));
+}
+
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function buildPlannedContexts({ requiredContexts, workflowContexts, renameSuggestions, canonicalOnly }) {
+  if (canonicalOnly) {
+    return workflowContexts.filter((ctx) => ctx.includes(' / required-check / '));
+  }
+
+  const replaceMap = new Map(renameSuggestions.map((item) => [item.requiredContext, item.candidateContext]));
+
+  const replaced = requiredContexts.map((ctx) => replaceMap.get(ctx) || ctx);
+  return dedupe(replaced);
+}
+
 function printSummary(report) {
-  console.log('=== Required-check Context Drift Guard (RLOOP-058) ===');
+  console.log('=== Required-check Context Drift Guard + Auto-remediation (RLOOP-059) ===');
+  console.log(`Repo: ${report.owner}/${report.repo}`);
   console.log(`Branch: ${report.branch}`);
-  console.log(`Required contexts (${report.requiredContexts.length})`);
+  console.log(`Mode: ${report.mode}`);
+  console.log(`Canonical only: ${report.canonicalOnly ? 'yes' : 'no'}`);
+
+  console.log(`\nRequired contexts (${report.requiredContexts.length})`);
   report.requiredContexts.forEach((ctx) => console.log(`  - ${ctx}`));
 
   console.log(`\nWorkflow/job contexts (${report.workflowContexts.length})`);
@@ -253,16 +302,18 @@ function printSummary(report) {
     });
   }
 
-  console.log('\nSuggested fixes:');
-  if (report.missingInWorkflows.length > 0) {
-    console.log('  1) Update workflow/job name(s) OR replace stale required context(s) in branch protection.');
+  if (report.planChanged) {
+    console.log('\nPlanned required contexts after remediation plan:');
+    report.plannedContexts.forEach((ctx) => console.log(`  - ${ctx}`));
+  } else {
+    console.log('\nPlanned required contexts: no change needed.');
   }
-  if (report.extraNotRequired.length > 0) {
-    console.log('  2) Add newly introduced critical context(s) to branch protection if they must gate merges.');
-  }
-  if (report.missingInWorkflows.length === 0 && report.extraNotRequired.length === 0) {
-    console.log('  - No action needed. Contexts are aligned.');
-  }
+
+  console.log('\nExecution summary:');
+  console.log(`  - dry-run: ${report.mode === 'dry-run' ? 'yes' : 'no'}`);
+  console.log(`  - apply: ${report.mode === 'apply' ? 'yes' : 'no'}`);
+  console.log(`  - planned changes: ${report.planChanged ? 'yes' : 'no'}`);
+  console.log(`  - applied changes: ${report.applied ? 'yes' : 'no'}`);
 }
 
 function failOrWarn(message, mode) {
@@ -276,9 +327,14 @@ function failOrWarn(message, mode) {
 
 async function main() {
   const args = parseArgs(process.argv);
+
   const branch = args.branch || 'master';
   const policy = (args.policy || 'fail').toLowerCase();
   const onApiError = (args['on-api-error'] || policy).toLowerCase();
+
+  const explicitDryRun = Boolean(args['dry-run']);
+  const explicitApply = Boolean(args.apply);
+  const canonicalOnly = Boolean(args['canonical-only']);
 
   if (!['warn', 'fail'].includes(policy)) {
     throw new Error(`Invalid --policy '${policy}'. Use warn|fail.`);
@@ -288,21 +344,26 @@ async function main() {
     throw new Error(`Invalid --on-api-error '${onApiError}'. Use warn|fail.`);
   }
 
-  const { owner, repo } = inferOwnerRepo(args.owner, args.repo);
-  const token = args.token || process.env.GITHUB_TOKEN;
-
-  if (!owner || !repo) {
-    throw new Error('Unable to infer owner/repo. Pass --owner and --repo or set GITHUB_REPOSITORY.');
+  if (explicitDryRun && explicitApply) {
+    throw new Error('Use either --dry-run or --apply (not both).');
   }
 
+  const mode = explicitApply ? 'apply' : 'dry-run';
+
+  const { owner, repo } = inferOwnerRepo(args.repo, args.owner, args['repo-name']);
+  if (!owner || !repo) {
+    throw new Error('Unable to infer owner/repo. Pass --repo owner/name or set GITHUB_REPOSITORY.');
+  }
+
+  const token = args.token || process.env.GITHUB_TOKEN;
   if (!token) {
     const code = failOrWarn('Missing GitHub token. Set GITHUB_TOKEN or pass --token.', onApiError);
     process.exit(code);
   }
 
-  let requiredContexts = [];
+  let protection;
   try {
-    requiredContexts = await fetchRequiredContexts({ owner, repo, branch, token });
+    protection = await fetchBranchProtection({ owner, repo, branch, token });
   } catch (error) {
     const code = failOrWarn(
       `Could not read branch protection for ${owner}/${repo}@${branch}: ${error.message}`,
@@ -310,6 +371,9 @@ async function main() {
     );
     process.exit(code);
   }
+
+  const requiredContexts = extractRequiredContexts(protection);
+  const strict = Boolean(protection?.required_status_checks?.strict);
 
   const workflowsDir = path.resolve('.github/workflows');
   if (!fs.existsSync(workflowsDir)) {
@@ -325,20 +389,66 @@ async function main() {
   const extraNotRequired = workflowContexts.filter((ctx) => !requiredSet.has(ctx));
   const renameSuggestions = buildRenameSuggestions(missingInWorkflows, extraNotRequired);
 
+  const plannedContexts = buildPlannedContexts({
+    requiredContexts,
+    workflowContexts,
+    renameSuggestions,
+    canonicalOnly,
+  });
+
+  const planChanged = !arraysEqual(requiredContexts, plannedContexts);
+
+  let applied = false;
+  if (mode === 'apply' && planChanged) {
+    try {
+      await patchRequiredContexts({
+        owner,
+        repo,
+        branch,
+        token,
+        contexts: plannedContexts,
+        strict,
+      });
+      applied = true;
+    } catch (error) {
+      throw new Error(`Failed to patch required contexts: ${error.message}`);
+    }
+  }
+
   const report = {
     owner,
     repo,
     branch,
+    mode,
+    canonicalOnly,
     requiredContexts,
     workflowContexts,
     missingInWorkflows,
     extraNotRequired,
     renameSuggestions,
+    plannedContexts,
+    planChanged,
+    applied,
   };
 
   printSummary(report);
 
   const hasDrift = missingInWorkflows.length > 0 || extraNotRequired.length > 0;
+
+  if (mode === 'apply') {
+    if (planChanged && applied) {
+      console.log('\nResult: APPLIED (required contexts patched).');
+      process.exit(0);
+    }
+
+    if (!planChanged) {
+      console.log('\nResult: NOOP (already aligned with remediation plan).');
+      process.exit(0);
+    }
+
+    process.exit(1);
+  }
+
   if (!hasDrift) {
     console.log('\nResult: PASS (no drift detected).');
     process.exit(0);
@@ -350,6 +460,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`::error::Unexpected failure in RLOOP-058 guard: ${error.message}`);
+  console.error(`::error::Unexpected failure in RLOOP-059 guard: ${error.message}`);
   process.exit(1);
 });

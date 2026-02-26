@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "start": "react-native start",
     "test": "jest",
-    "verify:required-check-contexts:rloop058": "node scripts/verify-required-check-contexts-rloop058.js"
+    "verify:required-check-contexts:rloop058": "node scripts/verify-required-check-contexts-rloop058.js",
+    "verify:required-check-contexts:rloop059:apply": "node scripts/verify-required-check-contexts-rloop058.js --apply"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.84.0",
