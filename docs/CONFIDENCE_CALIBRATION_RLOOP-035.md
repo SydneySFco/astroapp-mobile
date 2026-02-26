@@ -41,7 +41,24 @@ CONFIDENCE_CALIBRATION_FILE=reports/confidence-calibration.json \
 - `contention_confidence.confidence_after_calibration`
 - `contention_confidence.calibration`
 
+## RLOOP-036 update (ground-truth calibration path)
+Proxy-label affine calibration yanında labelled incident dataset ile supervised calibration skeleton eklendi:
+
+```bash
+python3 scripts/fit-groundtruth-calibration-rloop036.py \
+  --input reports/incidents-groundtruth.jsonl \
+  --method isotonic \
+  --out reports/groundtruth-calibration-rloop036.json
+```
+
+Alternatif:
+- `--method logistic` (Platt-style, class one-vs-rest)
+
+Ground-truth satır formatı:
+```json
+{"incident_id":"inc-001","actual_class":"db-lock","scores":{"network":0.11,"db-lock":0.82,"stale-race":0.04,"unknown":0.03}}
+```
+
 ## Notes / limitations
-- Bu iterasyonda ground-truth incident labels yok; `contention_classes` proxy label olarak kullanılıyor.
-- Parametrik yaklaşım hızlı fakat kaba; labelled dataset büyüyünce isotonic/logistic calibration önerilir.
-- `db-lock` confidence doğruluğu lock sampling yoğunluğu + spike korelasyonu + blocking graph yoğunluğuna bağlıdır.
+- Bu iterasyonda prod tarafında hâlâ heuristic confidence pipeline kullanılıyor; ground-truth calibration output'u entegrasyon için hazır skeleton.
+- `db-lock` confidence doğruluğu lock sampling yoğunluğu + spike korelasyonu + blocking graph yoğunluğu + top blocker fingerprint coverage ile artar.
