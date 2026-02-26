@@ -7,3 +7,6 @@ export * from './quarantineAdminRouter';
 export * from './quarantineAdminRuntime';
 export * from './quarantineAdminErrors';
 export * from './supabaseQuarantineControlPlane';
+export * from './canaryCheckPublisher';
+export * from './canaryCheckPublisherConfig';
+export * from './artifactStore';
