@@ -2,15 +2,18 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 
 import {supabase} from '../../services/supabase/client';
 import {QuarantineAdminApiError} from './quarantineAdminErrors';
-import type {
-  QuarantineActionResult,
-  QuarantineAdminRepository,
-  QuarantineControlPlaneReadModel,
-  QuarantineDetail,
-  QuarantineDropInput,
-  QuarantineListItem,
-  QuarantineReadFilters,
-  QuarantineRedriveInput,
+import {
+  createQuarantineAdminMetricEvent,
+  mapActionErrorToMetricOutcome,
+  type QuarantineActionResult,
+  type QuarantineAdminMetricEvent,
+  type QuarantineAdminRepository,
+  type QuarantineControlPlaneReadModel,
+  type QuarantineDetail,
+  type QuarantineDropInput,
+  type QuarantineListItem,
+  type QuarantineReadFilters,
+  type QuarantineRedriveInput,
 } from './quarantineControlPlane';
 
 const QUARANTINE_TABLE = 'replay_quarantine_messages';
@@ -78,135 +81,81 @@ const mapDetail = (row: QuarantineMessageRow, auditTrail: QuarantineAuditRow[]):
 
 const nowIso = () => new Date().toISOString();
 
-const ensurePendingReviewTransition = async (
-  client: SupabaseClient,
-  replayId: string,
-  nextStatus: 'redriven' | 'dropped',
-  processedAt: string,
-): Promise<void> => {
-  const patch =
-    nextStatus === 'redriven'
-      ? {status: nextStatus, redriven_at: processedAt, reviewed_at: processedAt, updated_at: processedAt}
-      : {status: nextStatus, dropped_at: processedAt, reviewed_at: processedAt, updated_at: processedAt};
+type PostgrestErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
 
-  const {data, error} = await client
-    .from(QUARANTINE_TABLE)
-    .update(patch)
-    .eq('replay_id', replayId)
-    .eq('status', 'pending_review')
-    .select('replay_id')
-    .maybeSingle<{replay_id: string}>();
-
-  if (error) {
-    throw error;
+const mapDbErrorToApiError = (
+  error: PostgrestErrorLike,
+  context: {replayId: string; action: 'manual_redrive_requested' | 'force_drop_requested'; requestId?: string},
+): QuarantineAdminApiError => {
+  if (error.code === 'P0002') {
+    return new QuarantineAdminApiError({
+      code: 'not_found',
+      status: 404,
+      message: 'Quarantine record not found',
+      details: {replayId: context.replayId, sqlstate: error.code},
+    });
   }
 
-  if (!data) {
-    const {data: existing, error: existingError} = await client
-      .from(QUARANTINE_TABLE)
-      .select('replay_id,status')
-      .eq('replay_id', replayId)
-      .maybeSingle<{replay_id: string; status: string}>();
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    if (!existing) {
-      throw new QuarantineAdminApiError({
-        code: 'not_found',
-        status: 404,
-        message: 'Quarantine record not found',
-        details: {replayId},
-      });
-    }
-
-    throw new QuarantineAdminApiError({
+  if (error.code === 'P0001') {
+    return new QuarantineAdminApiError({
       code: 'stale',
       status: 409,
       message: 'Quarantine state is stale for requested transition',
-      details: {replayId, currentStatus: existing.status, expectedStatus: 'pending_review'},
+      details: {
+        replayId: context.replayId,
+        expectedStatus: 'pending_review',
+        sqlstate: error.code,
+        dbMessage: error.message,
+      },
     });
   }
-};
 
-const logAuditEvent = async (
-  client: SupabaseClient,
-  input: {
-    replayId: string;
-    action: 'manual_redrive_requested' | 'force_drop_requested' | 'status_changed';
-    actorId: string;
-    reason: string;
-    approvalRef: string;
-    requestId?: string;
-    metadata?: Record<string, unknown>;
-  },
-): Promise<void> => {
-  const {error} = await client.from(QUARANTINE_AUDIT_TABLE).insert({
-    replay_id: input.replayId,
-    action: input.action,
-    actor_id: input.actorId,
-    reason: input.reason,
-    approval_ref: input.approvalRef,
-    request_id: input.requestId ?? null,
-    metadata: input.metadata ?? null,
-    created_at: nowIso(),
+  if (error.code === '23505') {
+    return new QuarantineAdminApiError({
+      code: 'idempotent_duplicate',
+      status: 409,
+      message: 'Idempotent request already processed',
+      details: {
+        replayId: context.replayId,
+        requestId: context.requestId,
+        action: context.action,
+        sqlstate: error.code,
+      },
+    });
+  }
+
+  return new QuarantineAdminApiError({
+    code: 'internal_error',
+    status: 500,
+    message: 'Unexpected quarantine admin error',
+    details: {
+      replayId: context.replayId,
+      action: context.action,
+      requestId: context.requestId,
+      sqlstate: error.code,
+      dbMessage: error.message,
+      dbDetails: error.details,
+      dbHint: error.hint,
+    },
   });
-
-  if (error) {
-    throw error;
-  }
-};
-
-const dedupeActionByRequestId = async (
-  client: SupabaseClient,
-  input: {
-    replayId: string;
-    action: 'manual_redrive_requested' | 'force_drop_requested';
-    requestId?: string;
-  },
-): Promise<QuarantineActionResult | null> => {
-  if (!input.requestId) {
-    return null;
-  }
-
-  const {data, error} = await client
-    .from(QUARANTINE_AUDIT_TABLE)
-    .select('request_id, metadata')
-    .eq('replay_id', input.replayId)
-    .eq('action', input.action)
-    .eq('request_id', input.requestId)
-    .order('created_at', {ascending: false})
-    .limit(1)
-    .maybeSingle<{request_id: string | null; metadata: Record<string, unknown> | null}>();
-
-  if (error) {
-    throw error;
-  }
-
-  const status = input.action === 'manual_redrive_requested' ? 'redriven' : 'dropped';
-  const processedAt =
-    data?.metadata && typeof data.metadata.processedAt === 'string' ? data.metadata.processedAt : null;
-
-  if (!data || !processedAt) {
-    return null;
-  }
-
-  return {
-    replayId: input.replayId,
-    status,
-    processedAt,
-  };
 };
 
 /**
- * Draft conflict-safe insert strategy for requestId dedup (DB-first):
- * - Insert audit row with unique constraint `(replay_id, action, request_id)`
- * - `on conflict do nothing` + returning clause
- * - If no row returned, read latest matching row and surface as idempotent_duplicate (409)
+ * DB-first requestId dedup contract.
  *
- * Current adapter still does read-first dedupe for broad compatibility,
- * but below helper documents an upsert-compatible binding shape for runtime adoption.
+ * SQL note:
+ * insert into replay_quarantine_audit_log (...)
+ * values (...)
+ * on conflict (replay_id, action, request_id) do nothing
+ * returning replay_id;
+ *
+ * returning row => first-seen request
+ * no row => idempotent duplicate (already processed)
  */
 export type QuarantineAuditConflictBindings = {
   insertActionAuditOnce: (input: {
@@ -219,6 +168,73 @@ export type QuarantineAuditConflictBindings = {
     metadata?: Record<string, unknown>;
     createdAt: string;
   }) => Promise<{inserted: boolean}>;
+};
+
+type DbActionResultRow = {
+  replay_id: string;
+  final_status: 'redriven' | 'dropped';
+  processed_at: string;
+  deduped: boolean;
+};
+
+const runTransactionalAdminAction = async (
+  client: SupabaseClient,
+  input: {
+    replayId: string;
+    action: 'manual_redrive_requested' | 'force_drop_requested';
+    audit: QuarantineRedriveInput['audit'] | QuarantineDropInput['audit'];
+    note?: string;
+  },
+): Promise<QuarantineActionResult> => {
+  const {data, error} = await client.rpc('replay_quarantine_apply_admin_action', {
+    p_replay_id: input.replayId,
+    p_action: input.action,
+    p_actor_id: input.audit.actorId,
+    p_reason: input.audit.reason,
+    p_approval_ref: input.audit.approvalRef,
+    p_request_id: input.audit.requestId ?? null,
+    p_note: input.note ?? null,
+    p_processed_at: nowIso(),
+  });
+
+  if (error) {
+    throw mapDbErrorToApiError(error as PostgrestErrorLike, {
+      replayId: input.replayId,
+      action: input.action,
+      requestId: input.audit.requestId,
+    });
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as DbActionResultRow | null;
+
+  if (!row) {
+    throw new QuarantineAdminApiError({
+      code: 'internal_error',
+      status: 500,
+      message: 'Unexpected quarantine admin error',
+      details: {replayId: input.replayId, action: input.action, requestId: input.audit.requestId},
+    });
+  }
+
+  if (row.deduped) {
+    throw new QuarantineAdminApiError({
+      code: 'idempotent_duplicate',
+      status: 409,
+      message: 'Idempotent request already processed',
+      details: {
+        replayId: input.replayId,
+        status: row.final_status,
+        processedAt: row.processed_at,
+        requestId: input.audit.requestId,
+      },
+    });
+  }
+
+  return {
+    replayId: row.replay_id,
+    status: row.final_status,
+    processedAt: row.processed_at,
+  };
 };
 
 export const createSupabaseQuarantineControlPlaneReadModel = (
@@ -284,91 +300,86 @@ export const createSupabaseQuarantineControlPlaneReadModel = (
   },
 });
 
-const processAction = async (
-  client: SupabaseClient,
-  input: {
-    replayId: string;
-    action: 'manual_redrive_requested' | 'force_drop_requested';
-    audit: QuarantineRedriveInput['audit'] | QuarantineDropInput['audit'];
-    note?: string;
-  },
-): Promise<QuarantineActionResult> => {
-  const deduped = await dedupeActionByRequestId(client, {
-    replayId: input.replayId,
-    action: input.action,
-    requestId: input.audit.requestId,
-  });
+export type QuarantineMetricEmitter = {
+  emit: (event: QuarantineAdminMetricEvent) => Promise<void> | void;
+};
 
-  if (deduped) {
-    throw new QuarantineAdminApiError({
-      code: 'idempotent_duplicate',
-      status: 409,
-      message: 'Idempotent request already processed',
-      details: {
-        replayId: deduped.replayId,
-        status: deduped.status,
-        processedAt: deduped.processedAt,
-        requestId: input.audit.requestId,
-      },
-    });
+const emitAdminActionMetric = async (
+  emitter: QuarantineMetricEmitter | undefined,
+  input: {
+    action: 'redrive' | 'drop';
+    outcome: 'accepted' | 'deduped' | 'stale_conflict' | 'rejected';
+    reason: string;
+    replayId: string;
+    requestId?: string;
+  },
+): Promise<void> => {
+  if (!emitter) {
+    return;
   }
 
-  const status = input.action === 'manual_redrive_requested' ? 'redriven' : 'dropped';
-  const processedAt = nowIso();
-
-  await ensurePendingReviewTransition(client, input.replayId, status, processedAt);
-
-  await logAuditEvent(client, {
-    replayId: input.replayId,
-    action: input.action,
-    actorId: input.audit.actorId,
-    reason: input.audit.reason,
-    approvalRef: input.audit.approvalRef,
-    requestId: input.audit.requestId,
-    metadata: {
-      note: input.note,
-      processedAt,
-      outcome: status,
-    },
-  });
-
-  await logAuditEvent(client, {
-    replayId: input.replayId,
-    action: 'status_changed',
-    actorId: input.audit.actorId,
-    reason: input.audit.reason,
-    approvalRef: input.audit.approvalRef,
-    requestId: input.audit.requestId,
-    metadata: {
-      fromStatus: 'pending_review',
-      toStatus: status,
-      note: input.note,
-      processedAt,
-    },
-  });
-
-  return {
-    replayId: input.replayId,
-    status,
-    processedAt,
-  };
+  await emitter.emit(
+    createQuarantineAdminMetricEvent({
+      action: input.action,
+      outcome: input.outcome,
+      reason: input.reason,
+      replayId: input.replayId,
+      requestId: input.requestId,
+    }),
+  );
 };
 
 export const createSupabaseQuarantineAdminRepository = (
   client: SupabaseClient = supabase,
-): QuarantineAdminRepository => ({
-  redrive: input =>
-    processAction(client, {
-      replayId: input.replayId,
-      action: 'manual_redrive_requested',
-      audit: input.audit,
-      note: input.note,
-    }),
-  forceDrop: input =>
-    processAction(client, {
-      replayId: input.replayId,
-      action: 'force_drop_requested',
-      audit: input.audit,
-      note: input.note,
-    }),
-});
+  deps?: {metrics?: QuarantineMetricEmitter},
+): QuarantineAdminRepository => {
+  const processAction = async (
+    input: {
+      replayId: string;
+      action: 'manual_redrive_requested' | 'force_drop_requested';
+      audit: QuarantineRedriveInput['audit'] | QuarantineDropInput['audit'];
+      note?: string;
+    },
+  ): Promise<QuarantineActionResult> => {
+    const metricAction = input.action === 'manual_redrive_requested' ? 'redrive' : 'drop';
+
+    try {
+      const result = await runTransactionalAdminAction(client, input);
+      await emitAdminActionMetric(deps?.metrics, {
+        action: metricAction,
+        outcome: 'accepted',
+        reason: input.audit.reason,
+        replayId: input.replayId,
+        requestId: input.audit.requestId,
+      });
+      return result;
+    } catch (error) {
+      const errorCode = error instanceof QuarantineAdminApiError ? error.code : undefined;
+      await emitAdminActionMetric(deps?.metrics, {
+        action: metricAction,
+        outcome: mapActionErrorToMetricOutcome(errorCode),
+        reason: input.audit.reason,
+        replayId: input.replayId,
+        requestId: input.audit.requestId,
+      });
+      throw error;
+    }
+  };
+
+  return {
+    redrive: input =>
+      processAction({
+        replayId: input.replayId,
+        action: 'manual_redrive_requested',
+        audit: input.audit,
+        note: input.note,
+      }),
+    forceDrop: input =>
+      processAction({
+        replayId: input.replayId,
+        action: 'force_drop_requested',
+        audit: input.audit,
+        note: input.note,
+      }),
+  };
+};
