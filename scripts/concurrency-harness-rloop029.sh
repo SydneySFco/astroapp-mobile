@@ -24,6 +24,21 @@ HARNESS_USE_EPHEMERAL_SCHEMA="${HARNESS_USE_EPHEMERAL_SCHEMA:-1}"
 HARNESS_AUTO_FIXTURE_INPUTS="${HARNESS_AUTO_FIXTURE_INPUTS:-1}"
 HARNESS_RESULT_STATUS="${HARNESS_RESULT_STATUS:-succeeded}"
 
+# Optional explicit single-fixture override compatibility
+HARNESS_JOB_ID="${HARNESS_JOB_ID:-}"
+HARNESS_LEASE_TOKEN="${HARNESS_LEASE_TOKEN:-}"
+HARNESS_LEASE_REVISION="${HARNESS_LEASE_REVISION:-}"
+
+# Optional explicit multi-fixture CSV overrides
+HARNESS_JOB_IDS="${HARNESS_JOB_IDS:-}"
+HARNESS_LEASE_TOKENS="${HARNESS_LEASE_TOKENS:-}"
+HARNESS_LEASE_REVISIONS="${HARNESS_LEASE_REVISIONS:-}"
+
+# Lock telemetry correlation draft inputs
+LOCK_TELEMETRY_FILE="${LOCK_TELEMETRY_FILE:-}"
+LATENCY_SPIKE_THRESHOLD_MS="${LATENCY_SPIKE_THRESHOLD_MS:-500}"
+CONTENTION_WINDOW_SEC="${CONTENTION_WINDOW_SEC:-5}"
+
 # Assertion controls
 FAIL_ON_APPLIED_ZERO="${FAIL_ON_APPLIED_ZERO:-1}"
 FAIL_ON_THRESHOLD_BREACH="${FAIL_ON_THRESHOLD_BREACH:-1}"
@@ -199,6 +214,10 @@ if [[ "$HARNESS_MODE" == "rpc_http" && ( -z "$SUPABASE_URL" || -z "$SUPABASE_SER
   exit 2
 fi
 
+TMP_DIR="$(mktemp -d)"
+ATTEMPTS_FILE="${TMP_DIR}/attempts.ndjson"
+: > "$ATTEMPTS_FILE"
+
 setup_ephemeral_schema
 seed_deterministic_fixtures
 
@@ -348,13 +367,18 @@ while (( i <= ITERATIONS )); do
   i=$((i + 1))
 done
 
-METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKERS"
-import json, statistics, sys
+METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKER_FAN_OUT" "$JOB_POOL_SIZE" "$LATENCY_SPIKE_THRESHOLD_MS" "$CONTENTION_WINDOW_SEC" "$LOCK_TELEMETRY_FILE"
+import json, statistics, sys, datetime
 from collections import defaultdict
 
 path=sys.argv[1]
 iterations=int(sys.argv[2])
-workers=int(sys.argv[3])
+fan_out=int(sys.argv[3])
+pool_size=int(sys.argv[4])
+lat_spike=float(sys.argv[5])
+window_sec=int(sys.argv[6])
+lock_file=sys.argv[7]
+
 rows=[]
 with open(path,"r",encoding="utf-8") as f:
     for line in f:
@@ -443,6 +467,84 @@ idempotent_drift_delta=(max(ratio_values)-min(ratio_values)) if ratio_values els
 
 consistency_ratio=(sequence_match/sequence_total) if sequence_total else 0.0
 
+job_pool_metrics={
+  "job_pool_size": pool_size,
+  "worker_fan_out": fan_out,
+  "attempts_per_iteration": pool_size * fan_out,
+  "total_attempts": len(rows),
+  "jobs": []
+}
+for job_id, job_rows in by_job.items():
+    o=defaultdict(int)
+    c=defaultdict(int)
+    l=[]
+    for jr in job_rows:
+        o[jr.get("outcome","unknown")]+=1
+        c[jr.get("contention_class","unknown")]+=1
+        l.append(float(jr.get("latency_ms",0.0)))
+    s=sorted(l)
+    job_pool_metrics["jobs"].append({
+      "job_id": job_id,
+      "attempts": len(job_rows),
+      "outcomes": {"applied":o["applied"],"idempotent":o["idempotent"],"stale_blocked":o["stale_blocked"],"unknown":o["unknown"]},
+      "contention_classes": {"network":c["network"],"db-lock":c["db-lock"],"stale-race":c["stale-race"],"unknown":c["unknown"]},
+      "latency_ms": {"p95":round(percentile(s,95),3),"max":round(max(s) if s else 0.0,3)}
+    })
+
+telemetry_rows=[]
+if lock_file:
+    try:
+        with open(lock_file,"r",encoding="utf-8") as f:
+            for line in f:
+                line=line.strip()
+                if not line:
+                    continue
+                telemetry_rows.append(json.loads(line))
+    except FileNotFoundError:
+        telemetry_rows=[]
+
+contention_windows=[]
+for t in telemetry_rows:
+    ts=int(t.get("timestamp_unix",0))
+    waiting=int(t.get("waiting_count",0))
+    blocked=int(t.get("blocked_queries",0))
+    lock_wait=int(t.get("lock_waiters",0))
+    if waiting>0 or blocked>0 or lock_wait>0:
+        contention_windows.append({
+            "start_unix": ts,
+            "end_unix": ts + window_sec,
+            "waiting_count": waiting,
+            "blocked_queries": blocked,
+            "lock_waiters": lock_wait,
+            "sample_source": t.get("sample_source","pg_locks+pg_stat_activity")
+        })
+
+spikes_correlated=0
+for sp in latency_spikes:
+    st=sp["timestamp_unix"]
+    for w in contention_windows:
+        if w["start_unix"] <= st <= w["end_unix"]:
+            spikes_correlated += 1
+            break
+
+corr_ratio=(spikes_correlated/len(latency_spikes)) if latency_spikes else 0.0
+contention_correlation={
+  "telemetry_enabled": bool(lock_file),
+  "telemetry_samples": len(telemetry_rows),
+  "contention_windows": contention_windows,
+  "latency_spike_threshold_ms": lat_spike,
+  "latency_spikes": latency_spikes,
+  "spikes_correlated_with_contention": spikes_correlated,
+  "spike_contention_correlation_ratio": round(corr_ratio,4),
+  "sampling_plan": {
+    "interval_sec": 1,
+    "recommended_queries": [
+      "select now() as sampled_at, count(*) filter (where not granted) as waiting_count from pg_locks;",
+      "select now() as sampled_at, count(*) filter (where wait_event_type = 'Lock') as lock_waiters, count(*) filter (where state='active') as active_queries from pg_stat_activity;"
+    ]
+  }
+}
+
 result={
   "outcomes": {k:int(outcomes[k]) for k in ("applied","idempotent","stale_blocked","unknown")},
   "latency_ms": {
@@ -463,7 +565,9 @@ result={
     "idempotent_ratio_by_iteration": idempotent_ratios,
     "idempotent_ratio_drift_delta": round(idempotent_drift_delta,4),
     "retry_outcomes_after_first_applied": retry_after_applied
-  }
+  },
+  "job_pool_metrics": job_pool_metrics,
+  "contention_correlation": contention_correlation
 }
 print(json.dumps(result))
 PY
@@ -619,6 +723,16 @@ PY
   "retry_idempotency_drift": $(python3 - <<'PY' "$METRICS_JSON"
 import json,sys
 print(json.dumps(json.loads(sys.argv[1])["retry_idempotency_drift"]))
+PY
+),
+  "job_pool_metrics": $(python3 - <<'PY' "$METRICS_JSON"
+import json,sys
+print(json.dumps(json.loads(sys.argv[1])["job_pool_metrics"]))
+PY
+),
+  "contention_correlation": $(python3 - <<'PY' "$METRICS_JSON"
+import json,sys
+print(json.dumps(json.loads(sys.argv[1])["contention_correlation"]))
 PY
 ),
   "assertions": {
