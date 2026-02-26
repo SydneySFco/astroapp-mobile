@@ -27,6 +27,23 @@ Nightly harness workflow içinde ek reliability gate:
   - `reports/reliability-gate-rloop037.json`
   - `reports/reliability-gate-rloop037.md`
 
+## Reliability Pipeline Extension (RLOOP-038)
+
+Nightly harness workflow reliability adımı genişletildi:
+- `scripts/build-groundtruth-artifact-rloop038.py`
+  - Ground-truth snapshot artifact üretir (nightly + weekly)
+  - Min sample-size guard sonuçlarını artifact içine yazar
+- `scripts/validate-groundtruth-artifact-schema-rloop038.py`
+  - Artifact contract alanlarını doğrular
+- `scripts/route-drift-alerts-rloop038.py`
+  - Class-wise ECE trend üstünden moving-average + delta gate uygular
+  - Severity'ye göre route belirler (`warn` / `critical`)
+
+Yeni artifact çıktıları:
+- `reports/groundtruth-artifacts/<cadence>/<date>/groundtruth-snapshot.json`
+- `reports/drift-alert-routing-rloop038.json`
+- `reports/drift-alert-routing-rloop038.md`
+
 ## PR Gate Notu
 
 PR merge için CI job'unun yeşil olması zorunludur.
