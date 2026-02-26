@@ -46,6 +46,8 @@ type SupabaseReportCatalogRow = {
 type SupabaseUserReportRow = {
   report_catalog_id: string;
   created_at: string;
+  updated_at: string | null;
+  version: number | null;
   title: string | null;
   summary: string | null;
   content_json: unknown;
@@ -204,7 +206,7 @@ export const reportsApi = createApi({
                   .single(),
                 supabase
                   .from('user_reports')
-                  .select('report_catalog_id,created_at,title,summary,content_json,status')
+                  .select('report_catalog_id,created_at,updated_at,version,title,summary,content_json,status')
                   .eq('report_catalog_id', reportId)
                   .order('created_at', {ascending: false})
                   .limit(1)

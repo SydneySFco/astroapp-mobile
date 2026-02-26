@@ -221,10 +221,57 @@ Ek metrikler:
 - subscription drops
 - stale event ignored
 
+## RLOOP-020 Backend Enforcement Package
+
+### Migration Draft (executable)
+Dosya: `docs/supabase/migrations/20260226130500_rloop020_user_reports_enforcement.sql`
+
+İçerik:
+- `user_reports` tablosuna `version (int, default 1)` ve `updated_at (timestamptz, utc now())` ekler.
+- `validate_user_reports_status_transition()` trigger function ile invalid status geçişlerini DB seviyesinde bloklar.
+- `bump_user_reports_version_and_timestamp()` trigger function ile her update'te `version` artırır ve `updated_at` yeniler.
+
+Blocked transitions (DB authority):
+- `queued -> ready`
+- `processing -> queued`
+- `ready -> queued`
+- `ready -> processing`
+- `archived -> !archived`
+
+Allowed transitions:
+- `queued -> queued|processing`
+- `processing -> processing|ready`
+- `ready -> ready`
+- `archived -> archived`
+
+### Versioning + Realtime Ordering Strategy
+- Realtime payload'larında `updated_at` + `version` birlikte kullanılmalı.
+- Client tarafında stale event ignore kuralı:
+  - incoming `version` < local `version` => ignore
+  - incoming `updated_at` < local `updated_at` => ignore
+- Backend'de monoton artış trigger ile garanti edilir.
+
+### Reconciliation Plan (`processing` stuck records)
+Skeleton: `docs/supabase/reconciliation/reconcile_stuck_processing.ts`
+
+Plan:
+1. SLA süresini aşmış `processing` kayıtlarını bul (`updated_at < now - SLA`).
+2. `alert_only` veya `retry` mode ile çalıştır.
+3. `retry` için privileged RPC (`requeue_stuck_user_report`) çağrısı yap.
+4. Her adımı audit/telemetry ile logla.
+
+Önerilen cron:
+- `*/10 * * * *` (10 dakikada bir)
+- edge function veya secure worker üzerinden `service_role` ile.
+
+### Client Compatibility Notes
+- `getReportDetail` query’si `user_reports` içinden `updated_at` ve `version` okumalı.
+- Bu alanlar UI rendering'i bozmaz; sadece freshness guard için metadata sağlar.
+- Mevcut lifecycle guard matrix ile çakışma yoktur (client defensive, backend authoritative).
+
 ## Open Items
 
-1. SQL migration scripts hazırlanmalı.
+1. `requeue_stuck_user_report` RPC'si tasarlanmalı (admin override/audit yaklaşımı netleştirilmeli).
 2. Trigger: `auth.users` -> `profiles` otomatik create (opsiyonel ama önerilir).
 3. Payment provider webhooks + service role güvenlik modeli netleştirilmeli.
-4. Report generation pipeline (queue/edge function) tasarlanmalı.
-5. `user_reports` için transition guard trigger + optional `version` increment mekanizması uygulanmalı.
+4. Report generation pipeline (queue/edge function) production-ready hale getirilmeli.
