@@ -23,6 +23,8 @@ JSONL (incident başına 1 satır):
 python3 scripts/eval-reliability-rloop036.py \
   --input reports/incidents-groundtruth.jsonl \
   --bins 10 \
+  --time-field timestamp \
+  --slice-by day \
   --out reports/reliability-eval-rloop036.json
 ```
 
@@ -30,6 +32,10 @@ python3 scripts/eval-reliability-rloop036.py \
 - `classwise.<class>.curve[]`
 - `classwise.<class>.ece`
 - `macro_ece`
+- `classwise_ece_trend.<class>[]`
+  - `slice`
+  - `ece`
+  - `count`
 
 ## Yorumlama
 - ECE düşükse (0'a yakın) confidence iyi kalibre.
