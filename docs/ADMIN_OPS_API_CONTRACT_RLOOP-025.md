@@ -1,28 +1,7 @@
-# ADMIN OPS API CONTRACT — RLOOP-025/RLOOP-026 (Draft)
+# ADMIN OPS API CONTRACT — RLOOP-025 (Draft)
 
 Bu doküman admin operasyonları için endpoint contract taslağını tanımlar.
 Read-model kaynağı: `reconcile_job_ops_view`.
-
-RLOOP-026 ile role-based authz ve replay metadata zorunlulukları eklenmiştir.
-
----
-
-## AuthZ
-
-- `GET /admin/ops/reconcile/jobs` → `admin_ops` veya `admin_approver`
-- `GET /admin/ops/reconcile/jobs/:jobId` → `admin_ops` veya `admin_approver`
-- `POST /admin/ops/reconcile/jobs/:jobId/replay` → `admin_approver`
-
-### Unauthorized Response Standard (403)
-```json
-{
-  "error": {
-    "code": "ADMIN_OPS_UNAUTHORIZED",
-    "message": "Admin ops role required",
-    "requiredAnyRole": ["admin_ops", "admin_approver"]
-  }
-}
-```
 
 ---
 
@@ -111,16 +90,9 @@ RLOOP-026 ile role-based authz ve replay metadata zorunlulukları eklenmiştir.
 {
   "reasonCode": "MANUAL_REPLAY",
   "reasonMessage": "Ops replay after incident mitigation",
-  "actorId": "8d72b8ae-b3e6-49de-9ed3-b040f151ab9e",
-  "reason": "Incident INC-129 closed; safe to replay",
-  "approvalRef": "APR-2026-02-26-17"
+  "requestedBy": "ops@sydneysf.co"
 }
 ```
-
-### Required fields (RLOOP-026)
-- `actorId`
-- `reason`
-- `approvalRef`
 
 ### 202 Response
 ```json
@@ -134,9 +106,6 @@ RLOOP-026 ile role-based authz ve replay metadata zorunlulukları eklenmiştir.
 ```json
 {"error":"jobId is required"}
 ```
-```json
-{"error":"actorId, reason and approvalRef are required"}
-```
 
 ---
 
@@ -144,3 +113,4 @@ RLOOP-026 ile role-based authz ve replay metadata zorunlulukları eklenmiştir.
 
 List/detail endpointleri write tablolarına doğrudan bakmaz; `reconcile_job_ops_view` üstünden çalışır.
 Böylece queue depth / retry age gibi operasyonel metrikler endpoint DTO'suna taşınabilir.
+
