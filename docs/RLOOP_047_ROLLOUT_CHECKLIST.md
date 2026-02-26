@@ -55,16 +55,8 @@ Bu checklist, `replay_quarantine_apply_admin_action` RPC hattının production r
 - [ ] audit insert fail simülasyonu -> API `internal_error`, partial write yok
 - [ ] state update fail simülasyonu -> API `internal_error`, partial write yok
 - [ ] rollback doğrulaması: state+audit atomik boundary korunuyor
-- [ ] DB-near ephemeral harness koşturuldu (`scripts/run-db-fault-harness-rloop048.sh`)
-- [ ] Harness çıktısı parser ile doğrulandı (RLOOP-048 skeleton)
 
-## 7) Migration/grant drift guard
-
-- [ ] `python3 scripts/check-migration-grant-drift-rloop048.py` temiz geçti
-- [ ] `EXPECTED_MIGRATION_VERSION` ile target env migration pin doğrulandı
-- [ ] Function-level execute grant coverage review edildi
-
-## 8) Rollback plan
+## 7) Rollback plan
 
 - [ ] Geri dönüş migration/feature flag stratejisi hazır
 - [ ] On-call runbook notu güncel
