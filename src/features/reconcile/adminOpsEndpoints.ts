@@ -40,7 +40,9 @@ export type ListJobsQuery = {
 export type ReplayRequestBody = {
   reasonCode?: unknown;
   reasonMessage?: unknown;
-  requestedBy?: unknown;
+  actorId?: unknown;
+  reason?: unknown;
+  approvalRef?: unknown;
 };
 
 export type AdminOpsEndpointDeps = {
@@ -133,10 +135,17 @@ export const replayReconcileJobHandler = async (
 
   const reasonCode = parseOptionalString(req.body?.reasonCode) ?? 'ADMIN_REPLAY_REQUESTED';
   const reasonMessage = parseOptionalString(req.body?.reasonMessage) ?? 'Replay requested by admin ops endpoint';
+  const actorId = parseOptionalString(req.body?.actorId) ?? 'admin-ops';
+  const reason = parseOptionalString(req.body?.reason) ?? reasonMessage;
+  const approvalRef = parseOptionalString(req.body?.approvalRef) ?? 'manual-admin-ops';
+
   const replay = await deps.repository.replay({
     jobId,
     reasonCode,
     reasonMessage,
+    actorId,
+    reason,
+    approvalRef,
   });
 
   return {
