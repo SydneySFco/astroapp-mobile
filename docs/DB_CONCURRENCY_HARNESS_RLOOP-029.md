@@ -1,124 +1,148 @@
-# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-033 update)
+# DB-backed Concurrency Harness (RLOOP-029)
 
 ## Purpose
-`finalize_reconcile_job` concurrency davranışını production-like yarış koşulunda ölçmek ve nightly CI’da assertion-fail odaklı çalıştırmak.
+`finalize_reconcile_job` concurrency davranışını gerçek DB seviyesinde doğrulamak ve nightly otomasyon için temel hazırlamak.
 
 Hedef metrikler:
-- outcome dağılımı: `applied:idempotent:stale_blocked:unknown`
+- outcome dağılımı: `applied:idempotent:stale_blocked`
 - stale conflict ratio
-- unknown fallback ratio
-- latency percentiles (`p50/p95/p99`)
-- outcome sequence consistency ratio
-- retry/idempotency drift
+- run-to-run drift gözlemi
 
 ---
 
-## RLOOP-031 Baseline
+## Scope
+Bu doküman bir **plan + skeleton** sunar. Production-grade assertion/fail policy RLOOP-030’da sıkılaştırılacaktır.
 
-### 1) Ephemeral schema + deterministic seed/teardown
-Script: `scripts/concurrency-harness-rloop029.sh`
+### In Scope
+- Ephemeral schema lifecycle (create/seed/drop)
+- Parallel finalize race senaryoları
+- Outcome aggregation + JSON report
+- Nightly CI integration noktaları
 
-- safe schema naming (`SCHEMA_SAFE`)
-- `HARNESS_USE_EPHEMERAL_SCHEMA=1` ise run başında create schema
-- deterministic seed key üretimi (`HARNESS_SEED_NAMESPACE`, workload, timestamp)
-- deterministic fixture auto wiring:
-  - `HARNESS_JOB_ID`
-  - `HARNESS_LEASE_TOKEN`
-  - `HARNESS_LEASE_REVISION`
-- `SUPABASE_DB_URL` varsa `public.reconcile_jobs` deterministic upsert
-- `trap EXIT` ile drop schema garantisi (best-effort + warning)
-
-### 2) Production-like race input wiring
-- `HARNESS_AUTO_FIXTURE_INPUTS=1` default
-- fixture alanları env verilmezse otomatik deterministic üretilir
-- RPC payload bu fixture’lardan beslenir
-
-### 3) Unknown fallback reduction + strict assertions
-- outcome extractor, error payload’ındaki stale/conflict ipuçlarını `stale_blocked`a sınıflandırır
-- `FAIL_ON_UNKNOWN_RATIO_BREACH=1`
-- `UNKNOWN_RATIO_FAIL_THRESHOLD=0.0500`
+### Out of Scope (RLOOP-030)
+- Full SQL migration automation for harness tables
+- Historical trend persistence (external TSDB/warehouse)
+- Slack/PagerDuty integration
 
 ---
 
-## RLOOP-032 Delta
+## Harness Architecture
 
-### 1) Real parallel finalize fan-out
-- Harness artık her iteration’da `WORKERS` kadar finalize çağrısını **eşzamanlı** (background process) çalıştırır.
-- Iteration bariyeri sayesinde gerçek yarış koşulu korunur: tüm worker’lar bitmeden bir sonraki iterasyona geçilmez.
+### 1) Ephemeral schema strategy
+Her run için izole bir schema oluşturulur:
+- örnek: `harness_20260226_133700_ab12`
 
-### 2) Latency metrics
-Report’a eklendi:
-- `latency_ms.p50`
-- `latency_ms.p95`
-- `latency_ms.p99`
+Adımlar:
+1. `create schema if not exists <schema>`
+2. Test tablosu/seed data oluştur
+3. Concurrency race çalıştır
+4. Sonuçları JSON raporla
+5. `drop schema <schema> cascade`
 
-### 3) Consistency metrics
-Report’a eklendi:
-- `consistency.sequence_match_ratio`
-- `consistency.sequence_matches`
-- `consistency.sequence_total`
-- `consistency.by_worker_slot[]`
+Not:
+- Script hata alsa bile cleanup için `trap` kullanılmalı.
+- CI’da runlar birbiriyle çakışmasın diye schema adında timestamp+random tutulur.
 
-### 4) Retry/idempotency drift
-Report’a eklendi:
-- `retry_idempotency_drift.idempotent_ratio_by_iteration[]`
-- `retry_idempotency_drift.idempotent_ratio_drift_delta`
-- `retry_idempotency_drift.retry_outcomes_after_first_applied`
+### 2) Seed strategy
+Minimum seed şeması:
+- `reconcile_jobs` benzeri bir test tablosu
+  - `id` (uuid)
+  - `status`
+  - `lease_token`
+  - `version`
+  - `finalized_at`
 
-### 5) Optional new fail gates
-- `FAIL_ON_P95_LATENCY_BREACH` + `P95_LATENCY_FAIL_THRESHOLD_MS`
-- `FAIL_ON_CONSISTENCY_BREACH` + `CONSISTENCY_MIN_RATIO`
-- `FAIL_ON_IDEMPOTENCY_DRIFT_BREACH` + `IDEMPOTENCY_DRIFT_MAX_DELTA`
+Seed set önerisi:
+- Tek bir hot job id (race için)
+- Ek olarak birkaç control row (opsiyonel)
+
+### 3) Parallel finalize race
+Aynı job üzerinde aynı anda finalize tetiklenir.
+
+Parametreler:
+- `workers` (örn. 20)
+- `iterations` (örn. 5)
+
+Beklenen davranış:
+- İlk geçerli finalize: `applied`
+- Aynı lease/version ile tekrarlar: `idempotent`
+- stale lease/version ile gelenler: `stale_blocked`
+
+### 4) Outcome aggregation
+Her deneme için outcome toplanır:
+- `applied_count`
+- `idempotent_count`
+- `stale_blocked_count`
+- `total_attempts`
+
+Derived metric:
+- `stale_conflict_ratio = stale_blocked_count / total_attempts`
+
+Output format (öneri):
+```json
+{
+  "schema": "harness_20260226_133700_ab12",
+  "workers": 20,
+  "iterations": 5,
+  "total_attempts": 100,
+  "outcomes": {
+    "applied": 5,
+    "idempotent": 60,
+    "stale_blocked": 35
+  },
+  "ratios": {
+    "stale_conflict_ratio": 0.35
+  }
+}
+```
 
 ---
 
-## RLOOP-033 Delta
+## Ops Thresholds (stale conflict ratio)
 
-### 1) Multi-job chaos mode
-- Tek job yerine aynı anda `JOB_POOL_SIZE` kadar job fixture üretilir/seed edilir.
-- Job başına parallel finalize fan-out `WORKER_FAN_OUT` ile kontrol edilir.
-- Iteration başına toplam yarış: `JOB_POOL_SIZE * WORKER_FAN_OUT`.
+Önerilen alarm seviyeleri:
+- **Healthy:** `< 0.05`
+- **Watch:** `>= 0.05 && < 0.15`
+- **Alert:** `>= 0.15 && < 0.30`
+- **Critical:** `>= 0.30`
 
-### 2) Contention classification
-- Attempt seviyesinde sınıf etiketleri:
-  - `network`
-  - `db-lock`
-  - `stale-race`
-  - `unknown`
-- Sınıflandırma raw RPC response/error payload ipuçlarından yapılır.
+Ek kurallar:
+- `applied_count == 0 && total_attempts > 0` => doğrudan alarm
+- 7 günlük baseline’a göre `>= 2x` artış => watch/alert escalation
 
-### 3) Lock telemetry correlation draft
-- `LOCK_TELEMETRY_FILE` (NDJSON) verildiğinde sample veriden contention windows çıkarılır.
-- `LATENCY_SPIKE_THRESHOLD_MS` üzerindeki latency spike’lar bu window’larla eşleştirilir.
-- Korelasyon oranı raporlanır.
-- DB erişimi olmayan ortamlarda docs + parser iskeleti olarak çalışır.
-
-### 4) Report extensions
-- `job_pool_metrics`
-- `contention_correlation`
-- `contention_classes`
+Bu eşikler başlangıç önerisidir; prod traffic pattern’e göre kalibre edilmelidir.
 
 ---
 
-## CI Integration
+## CI Integration Draft
+
 Workflow: `.github/workflows/nightly-concurrency-harness.yml`
 
-Akış:
-1. install
-2. harness run (strict assertions)
-3. artifact upload (`*.json` + `history.ndjson`)
-4. optional webhook notify
+Trigger:
+- nightly schedule (UTC)
+- manual dispatch
 
-Secrets/vars:
-- Required (rpc_http): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- Optional seed/schema lifecycle: `SUPABASE_DB_URL`
-- Optional notify: `CONCURRENCY_HARNESS_WEBHOOK_URL`
+Secrets/vars gereksinimleri:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- opsiyonel: `SUPABASE_DB_URL` (doğrudan psql/test client için)
+
+CI job:
+1. dependencies install
+2. harness script execute
+3. report artifact upload
+4. (RLOOP-030) threshold breach ise fail
 
 ---
 
-## Suggested thresholds (initial)
-- `p95 latency`: warn > `800ms`, fail gate optional > `1000ms`
-- `sequence_match_ratio`: warn < `0.90`, fail gate optional < `0.85`
-- `idempotent_ratio_drift_delta`: warn > `0.20`, fail gate optional > `0.30`
+## Script Skeleton
 
-Not: threshold’lar ilk 1-2 haftalık historical baseline sonrası kalibre edilmelidir.
+Dosya: `scripts/concurrency-harness-rloop029.sh`
+
+Bu script şu anda:
+- env doğrular
+- ephemeral schema adı üretir
+- placeholder report üretir
+- cleanup trap içerir
+
+RLOOP-030’da gerçek DB/RPC çağrıları ve assert/fail logic eklenecektir.
