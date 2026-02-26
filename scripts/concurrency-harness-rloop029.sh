@@ -39,6 +39,12 @@ LOCK_TELEMETRY_FILE="${LOCK_TELEMETRY_FILE:-}"
 LATENCY_SPIKE_THRESHOLD_MS="${LATENCY_SPIKE_THRESHOLD_MS:-500}"
 CONTENTION_WINDOW_SEC="${CONTENTION_WINDOW_SEC:-5}"
 
+# Optional live collector integration (RLOOP-034)
+LOCK_TELEMETRY_LIVE_COLLECT="${LOCK_TELEMETRY_LIVE_COLLECT:-0}"
+LOCK_TELEMETRY_SAMPLE_INTERVAL_SEC="${LOCK_TELEMETRY_SAMPLE_INTERVAL_SEC:-1}"
+LOCK_TELEMETRY_MAX_SAMPLES="${LOCK_TELEMETRY_MAX_SAMPLES:-0}"
+LOCK_TELEMETRY_DB_URL="${LOCK_TELEMETRY_DB_URL:-$SUPABASE_DB_URL}"
+
 # Assertion controls
 FAIL_ON_APPLIED_ZERO="${FAIL_ON_APPLIED_ZERO:-1}"
 FAIL_ON_THRESHOLD_BREACH="${FAIL_ON_THRESHOLD_BREACH:-1}"
@@ -528,6 +534,54 @@ for sp in latency_spikes:
             break
 
 corr_ratio=(spikes_correlated/len(latency_spikes)) if latency_spikes else 0.0
+telemetry_strength=min(1.0, len(contention_windows)/max(iterations,1))
+class_total=max(len(rows),1)
+
+def clamp(v):
+    return max(0.0,min(1.0,v))
+
+def band(score):
+    if score >= 0.75:
+        return "high"
+    if score >= 0.45:
+        return "medium"
+    return "low"
+
+network_ratio=classes["network"]/class_total
+db_lock_ratio=classes["db-lock"]/class_total
+stale_race_ratio=classes["stale-race"]/class_total
+unknown_ratio=classes["unknown"]/class_total
+
+network_score=clamp((network_ratio*0.7) + ((1.0-corr_ratio)*0.2) + ((1.0-telemetry_strength)*0.1))
+db_lock_score=clamp((db_lock_ratio*0.55) + (corr_ratio*0.35) + (telemetry_strength*0.1))
+stale_race_score=clamp((stale_race_ratio*0.65) + ((1.0-corr_ratio)*0.2) + ((1.0-db_lock_ratio)*0.15))
+unknown_score=clamp((unknown_ratio*0.8) + ((1.0-telemetry_strength)*0.2))
+
+class_confidence={
+  "network": {
+    "score": round(network_score,4),
+    "band": band(network_score),
+    "signals": {"class_ratio": round(network_ratio,4), "corr_ratio": round(corr_ratio,4)}
+  },
+  "db-lock": {
+    "score": round(db_lock_score,4),
+    "band": band(db_lock_score),
+    "signals": {"class_ratio": round(db_lock_ratio,4), "corr_ratio": round(corr_ratio,4), "telemetry_strength": round(telemetry_strength,4)}
+  },
+  "stale-race": {
+    "score": round(stale_race_score,4),
+    "band": band(stale_race_score),
+    "signals": {"class_ratio": round(stale_race_ratio,4), "inverse_corr_ratio": round(1.0-corr_ratio,4)}
+  },
+  "unknown": {
+    "score": round(unknown_score,4),
+    "band": band(unknown_score),
+    "signals": {"class_ratio": round(unknown_ratio,4), "telemetry_strength": round(telemetry_strength,4)}
+  }
+}
+
+dominant_class=max(class_confidence.items(), key=lambda kv: kv[1]["score"])[0]
+
 contention_correlation={
   "telemetry_enabled": bool(lock_file),
   "telemetry_samples": len(telemetry_rows),
@@ -536,6 +590,12 @@ contention_correlation={
   "latency_spikes": latency_spikes,
   "spikes_correlated_with_contention": spikes_correlated,
   "spike_contention_correlation_ratio": round(corr_ratio,4),
+  "confidence": {
+    "contention_class_confidence": class_confidence,
+    "dominant_contention_class": dominant_class,
+    "dominant_confidence_score": class_confidence[dominant_class]["score"],
+    "dominant_confidence_band": class_confidence[dominant_class]["band"]
+  },
   "sampling_plan": {
     "interval_sec": 1,
     "recommended_queries": [
