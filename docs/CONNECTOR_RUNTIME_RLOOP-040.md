@@ -36,8 +36,28 @@ Taslak implementasyonlar:
 - `DbWatermarkStateStorePlaceholder`
   - DB `selectByKey/upsert` callback'leriyle placeholder
 
-## Sonraki Adım (RLOOP-041 öneri girdisi)
+## RLOOP-041 Güncellemesi
 
-- `build-groundtruth-artifact-rloop039.py` ile bu TS runtime adapter katmanını aynı contract etrafında birleştirmek
-- state-store için gerçek Supabase/Postgres implementasyonu eklemek
-- runtime tick için integration test (cursor advance + idempotent replay)
+RLOOP-041 ile runtime operationalization bir adım ileri taşındı:
+
+- `SqlWatermarkStateStoreAdapter` eklendi (`src/features/reliability/stateStore.ts`)
+- Supabase/Postgres-friendly factory'ler eklendi:
+  - `createSupabaseWatermarkStateStore(...)`
+  - `createPostgresWatermarkStateStore(...)`
+- DB row modeli normalize edildi:
+  - `key`
+  - `cursor`
+  - `updated_at`
+
+Bu sayede file/db placeholder'larla aynı `WatermarkStateStore` interface korunurken
+infra tarafında callback enjeksiyonu ile doğrudan Supabase/pg binding yapılabilir hale geldi.
+
+## Integration Test Hardening (RLOOP-041)
+
+Yeni lightweight test iskeleti:
+- `__tests__/reliability.runtime.rloop041.test.ts`
+
+Doğrulanan temel senaryolar:
+1. connector cursor advance + watermark persist
+2. suppression window davranışı
+3. retry/backoff + DLQ fallback

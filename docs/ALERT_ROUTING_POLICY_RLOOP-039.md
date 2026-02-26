@@ -74,8 +74,38 @@ Worker metrik alanları:
 
 Bu alanlar run bazlı veya tick bazlı telemetry emit katmanına bağlanmak üzere taslak olarak tanımlandı.
 
+## RLOOP-041 Dispatch Operationalization Güncellemesi
+
+RLOOP-041 ile `src/features/reliability/alertDispatcherWorker.ts` üzerinde:
+
+- Transport adapter ayrımı operational naming ile güncellendi:
+  - `createSlackTransportDispatcher(...)`
+  - `createWebhookTransportDispatcher(...)`
+- Error classification eklendi:
+  - `retryable` (429/5xx, timeout/network vb.)
+  - `fatal` (4xx permanent class)
+  - `unknown`
+- Fatal sınıf hata alındığında retry döngüsü kısa devre yapar.
+- DLQ kaydı zenginleştirildi:
+  - `lastErrorMessage`
+  - `lastErrorClassification`
+- Telemetry metriklerine `dispatchRetryCount` eklendi.
+
+## RLOOP-041 DLQ Replay Skeleton
+
+Yeni modül: `src/features/reliability/dlqReplayWorker.ts`
+
+- Replay queue consumption taslağı:
+  - `pullBatch(limit)`
+  - `ack(replayId)`
+  - `reschedule(replayId, reason)`
+- Tick API: `runDlqReplayTick(...)`
+- Telemetry alanları:
+  - `pulledCount`, `ackedCount`, `rescheduledCount`
+  - `replaySuccessCount`, `replayFailureCount`
+
 ## Operasyon Notu
 
 - `out-slack` ve `out-webhook` çıktıları dispatch katmanına hazır format üretir.
 - Gerçek webhook/slack gönderimi CI/job orchestration katmanında yapılmalıdır.
-- Dead-letter queue replay/runbook adımı bir sonraki iterasyonda (RLOOP-041) operationalize edilmelidir.
+- DLQ replay skeleton operationalize edildi; production runbook/policy tuning bir sonraki iterasyonda derinleştirilebilir.

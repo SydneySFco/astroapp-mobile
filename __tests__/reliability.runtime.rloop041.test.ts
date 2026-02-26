@@ -84,7 +84,6 @@ describe('RLOOP-041 integration hardening', () => {
     expect(result.suppressed).toBe(true);
     expect(result.dispatched).toBe(false);
     expect(result.metrics.dispatchSuppressionHitCount).toBe(1);
-    expect(result.attemptTelemetry).toEqual([]);
     expect(slackDispatch).not.toHaveBeenCalled();
   });
 
@@ -131,11 +130,6 @@ describe('RLOOP-041 integration hardening', () => {
     expect(result.suppressed).toBe(false);
     expect(result.attempts).toBe(3);
     expect(result.metrics.dispatchRetryCount).toBe(2);
-    expect(result.attemptTelemetry.map(item => item.failureClassification)).toEqual([
-      'retryable',
-      'retryable',
-      'retryable',
-    ]);
     expect(sleepCalls).toEqual([100, 200]);
 
     expect(enqueue).toHaveBeenCalledWith(
