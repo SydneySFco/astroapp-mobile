@@ -1,4 +1,4 @@
-# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-032 update)
+# DB-backed Concurrency Harness (RLOOP-029 → RLOOP-033 update)
 
 ## Purpose
 `finalize_reconcile_job` concurrency davranışını production-like yarış koşulunda ölçmek ve nightly CI’da assertion-fail odaklı çalıştırmak.
@@ -69,6 +69,34 @@ Report’a eklendi:
 - `FAIL_ON_P95_LATENCY_BREACH` + `P95_LATENCY_FAIL_THRESHOLD_MS`
 - `FAIL_ON_CONSISTENCY_BREACH` + `CONSISTENCY_MIN_RATIO`
 - `FAIL_ON_IDEMPOTENCY_DRIFT_BREACH` + `IDEMPOTENCY_DRIFT_MAX_DELTA`
+
+---
+
+## RLOOP-033 Delta
+
+### 1) Multi-job chaos mode
+- Tek job yerine aynı anda `JOB_POOL_SIZE` kadar job fixture üretilir/seed edilir.
+- Job başına parallel finalize fan-out `WORKER_FAN_OUT` ile kontrol edilir.
+- Iteration başına toplam yarış: `JOB_POOL_SIZE * WORKER_FAN_OUT`.
+
+### 2) Contention classification
+- Attempt seviyesinde sınıf etiketleri:
+  - `network`
+  - `db-lock`
+  - `stale-race`
+  - `unknown`
+- Sınıflandırma raw RPC response/error payload ipuçlarından yapılır.
+
+### 3) Lock telemetry correlation draft
+- `LOCK_TELEMETRY_FILE` (NDJSON) verildiğinde sample veriden contention windows çıkarılır.
+- `LATENCY_SPIKE_THRESHOLD_MS` üzerindeki latency spike’lar bu window’larla eşleştirilir.
+- Korelasyon oranı raporlanır.
+- DB erişimi olmayan ortamlarda docs + parser iskeleti olarak çalışır.
+
+### 4) Report extensions
+- `job_pool_metrics`
+- `contention_correlation`
+- `contention_classes`
 
 ---
 
