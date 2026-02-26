@@ -12,6 +12,10 @@ Tek job yarışından multi-job chaos moduna geçerek lock contention/latency da
 - `LOCK_TELEMETRY_FILE` (optional NDJSON)
 - `LATENCY_SPIKE_THRESHOLD_MS` (default `500`)
 - `CONTENTION_WINDOW_SEC` (default `5`)
+- `LOCK_TELEMETRY_LIVE_COLLECT` (default `0`, `1` => harness sırasında live collector başlat)
+- `LOCK_TELEMETRY_DB_URL` (default `SUPABASE_DB_URL`)
+- `LOCK_TELEMETRY_SAMPLE_INTERVAL_SEC` (default `1`)
+- `LOCK_TELEMETRY_MAX_SAMPLES` (default `0`)
 
 ## Optional fixture overrides
 - CSV: `HARNESS_JOB_IDS`, `HARNESS_LEASE_TOKENS`, `HARNESS_LEASE_REVISIONS`
@@ -37,6 +41,9 @@ JSON report now includes:
   - telemetry sample count
   - derived contention windows
   - latency spikes and correlation ratio
+  - confidence breakdown (`contention_class_confidence`, dominant class/score/band)
+- `contention_confidence`
+  - top-level confidence mirror for downstream reporting consumers
 - `contention_classes`
   - overall class distribution (`network/db-lock/stale-race/unknown`)
 
@@ -45,3 +52,13 @@ JSON report now includes:
 - `db-lock`: lock/deadlock/wait-event hints
 - `stale-race`: stale lease or idempotent replay contention
 - `unknown`: non-matching signals
+
+## Confidence bands (RLOOP-034)
+- `low`: `< 0.45`
+- `medium`: `0.45 - 0.7499`
+- `high`: `>= 0.75`
+
+Confidence score signals combine:
+- class ratio contribution
+- spike/contention correlation ratio
+- telemetry strength (window density)
