@@ -1,0 +1,56 @@
+name: Nightly Concurrency Harness (Draft)
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: "Parallel worker count"
+        required: false
+        default: "20"
+      iterations:
+        description: "Race iterations"
+        required: false
+        default: "5"
+  schedule:
+    - cron: "30 2 * * *" # 02:30 UTC nightly
+
+jobs:
+  concurrency-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run DB concurrency harness (draft)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WORKERS: ${{ github.event.inputs.workers || '20' }}
+          ITERATIONS: ${{ github.event.inputs.iterations || '5' }}
+        run: |
+          chmod +x scripts/concurrency-harness-rloop029.sh
+          scripts/concurrency-harness-rloop029.sh
+
+      - name: Upload harness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: concurrency-harness-report
+          path: reports/concurrency-harness-*.json
+
+      - name: Secret requirements (documentation)
+        if: always()
+        run: |
+          echo "Required secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY"
+          echo "Optional future variable: SUPABASE_DB_URL"
