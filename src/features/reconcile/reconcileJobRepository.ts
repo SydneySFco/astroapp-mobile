@@ -17,7 +17,9 @@ export type ReconcileJobReplayInput = {
   jobId: string;
   reasonCode: string;
   reasonMessage: string;
-  requestedBy?: string;
+  actorId: string;
+  reason: string;
+  approvalRef: string;
 };
 
 export type ReconcileJobReplayResult = {

@@ -14,23 +14,16 @@ import {mapReconcileJobRowToDomain} from './reconcileJobRepository';
 
 const JOB_TABLE = 'reconcile_jobs';
 const OPS_VIEW = 'reconcile_job_ops_view';
+const CLAIM_RPC = 'claim_reconcile_job';
+const AUDIT_TABLE = 'reconcile_audit_log';
 
 export const createSupabaseReconcileJobRepository = (
   client: SupabaseClient = supabase,
 ): RuntimeReconcileJobRepository => ({
   claimNext: async leaseDurationMs => {
-    // TODO: replace with transactional RPC (e.g. claim_reconcile_job) to avoid races.
-    const nowIso = new Date().toISOString();
-
-    const {data, error} = await client
-      .from(JOB_TABLE)
-      .select('*')
-      .eq('status', 'queued')
-      .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
-      .order('retry_after', {ascending: true, nullsFirst: true})
-      .order('created_at', {ascending: true})
-      .limit(1)
-      .maybeSingle<ReconcileJobRow>();
+    const {data, error} = await client.rpc(CLAIM_RPC, {
+      lease_duration_ms: leaseDurationMs,
+    });
 
     if (error) {
       throw error;
@@ -40,25 +33,7 @@ export const createSupabaseReconcileJobRepository = (
       return null;
     }
 
-    const leasedUntil = new Date(Date.now() + leaseDurationMs).toISOString();
-
-    const {error: updateError} = await client
-      .from(JOB_TABLE)
-      .update({
-        status: 'running',
-        leased_until: leasedUntil,
-      })
-      .eq('id', data.id);
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    return mapReconcileJobRowToDomain({
-      ...data,
-      status: 'running',
-      leased_until: leasedUntil,
-    });
+    return mapReconcileJobRowToDomain(data as ReconcileJobRow);
   },
 
   markSucceeded: async (jobId, finishedAt) => {
@@ -97,7 +72,6 @@ export const createSupabaseReconcileJobRepository = (
   },
 
   replay: async (input: ReconcileJobReplayInput): Promise<ReconcileJobReplayResult> => {
-    // TODO: optionally write to a dedicated replay/audit table in next iteration.
     const replayRequestedAt = new Date().toISOString();
 
     const {error} = await client
@@ -114,6 +88,25 @@ export const createSupabaseReconcileJobRepository = (
 
     if (error) {
       throw error;
+    }
+
+    const {error: auditError} = await client.from(AUDIT_TABLE).insert({
+      aggregate_type: 'reconcile_job',
+      aggregate_id: input.jobId,
+      action: 'admin_replay_requested',
+      actor_id: input.actorId,
+      payload: {
+        reasonCode: input.reasonCode,
+        reasonMessage: input.reasonMessage,
+        reason: input.reason,
+        approvalRef: input.approvalRef,
+        replayRequestedAt,
+      },
+      created_at: replayRequestedAt,
+    });
+
+    if (auditError) {
+      throw auditError;
     }
 
     return {
