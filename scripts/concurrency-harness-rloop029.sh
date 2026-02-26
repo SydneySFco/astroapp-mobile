@@ -626,6 +626,8 @@ blocking_graph_samples=0
 blocking_graph_edge_count=0
 blocking_graph_max_edges_per_sample=0
 blocking_graph_max_blockers_per_blocked=0
+blocker_fingerprint_counts=defaultdict(int)
+blocker_fingerprint_meta={}
 
 for t in telemetry_rows:
     ts=int(t.get("timestamp_unix",0))
@@ -635,6 +637,15 @@ for t in telemetry_rows:
     g=t.get("blocking_graph_summary") or {}
     edge_count=int(g.get("edge_count",0) or 0)
     max_blockers=int(g.get("max_blockers_per_blocked",0) or 0)
+    fp=t.get("top_blocker_fingerprint") or {}
+    fp_hash=(fp.get("query_fingerprint_hash") if isinstance(fp,dict) else None) or None
+    if fp_hash:
+        blocker_fingerprint_counts[fp_hash]+=1
+        if fp_hash not in blocker_fingerprint_meta:
+            blocker_fingerprint_meta[fp_hash]={
+              "query_family": fp.get("query_family") or None,
+              "redaction": fp.get("redaction") or "hash-only-no-raw-query"
+            }
 
     if edge_count > 0:
         blocking_graph_samples += 1
@@ -655,6 +666,17 @@ for t in telemetry_rows:
             },
             "sample_source": t.get("sample_source","pg_locks+pg_stat_activity+pg_blocking_pids")
         })
+
+top_blocker_fingerprint=None
+if blocker_fingerprint_counts:
+    fp_hash, fp_count = max(blocker_fingerprint_counts.items(), key=lambda kv: (kv[1], kv[0]))
+    top_blocker_fingerprint={
+      "query_fingerprint_hash": fp_hash,
+      "sample_hits": fp_count,
+      "sample_share": round(fp_count/max(len(telemetry_rows),1),4),
+      "query_family": blocker_fingerprint_meta.get(fp_hash,{}).get("query_family"),
+      "redaction": blocker_fingerprint_meta.get(fp_hash,{}).get("redaction","hash-only-no-raw-query")
+    }
 
 spikes_correlated=0
 for sp in latency_spikes:
@@ -761,7 +783,8 @@ contention_correlation={
     "edge_count_total": blocking_graph_edge_count,
     "max_edges_per_sample": blocking_graph_max_edges_per_sample,
     "max_blockers_per_blocked": blocking_graph_max_blockers_per_blocked,
-    "edge_density": round(blocking_graph_density,4)
+    "edge_density": round(blocking_graph_density,4),
+    "top_blocker_fingerprint": top_blocker_fingerprint
   },
   "confidence": {
     "contention_class_confidence": calibrated_confidence,
@@ -772,6 +795,7 @@ contention_correlation={
     "dominant_confidence_score": calibrated_confidence[dominant_class]["score"],
     "dominant_confidence_band": calibrated_confidence[dominant_class]["band"],
     "calibration": calibration_meta,
+    "top_blocker_fingerprint": top_blocker_fingerprint,
     "db_lock_accuracy_notes": {
       "heuristic": "db-lock confidence rises with lock-class ratio + latency/contention correlation + telemetry coverage",
       "known_limitations": [
