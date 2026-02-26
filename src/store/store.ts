@@ -2,9 +2,11 @@ import {configureStore} from '@reduxjs/toolkit';
 
 import {authApi} from '../features/auth/authApi';
 import {healthApi} from '../features/health/healthApi';
+import {onboardingReducer} from '../features/onboarding/onboardingSlice';
 
 export const store = configureStore({
   reducer: {
+    onboarding: onboardingReducer,
     [healthApi.reducerPath]: healthApi.reducer,
     [authApi.reducerPath]: authApi.reducer,
   },

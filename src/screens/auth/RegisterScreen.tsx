@@ -1,8 +1,10 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {useDispatch} from 'react-redux';
 
 import {trackEvent} from '../../features/analytics/analytics';
 import {useRegisterMutation} from '../../features/auth/authApi';
+import {setOnboardingComplete} from '../../features/onboarding/onboardingSlice';
 import {colors} from '../../theme/colors';
 
 type Props = {
@@ -11,13 +13,28 @@ type Props = {
 
 const TOTAL_STEPS = 5;
 
+const INTENT_OPTIONS = [
+  'Bugün neye odaklanacağımı görmek istiyorum',
+  'Duygumu regüle etmek için kısa yönlendirme istiyorum',
+  'Kendim hakkında kısa ve kişisel bir içgörü istiyorum',
+];
+
 export function RegisterScreen({onGoLogin}: Props) {
+  const dispatch = useDispatch();
+
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const [birthDate, setBirthDate] = useState('');
+  const [birthTime, setBirthTime] = useState('');
+  const [unknownBirthTime, setUnknownBirthTime] = useState(false);
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('');
+
   const [intent, setIntent] = useState('');
+  const [showSummary, setShowSummary] = useState(false);
   const [localSuccess, setLocalSuccess] = useState('');
 
   const [register, {isLoading, isError}] = useRegisterMutation();
@@ -25,6 +42,12 @@ export function RegisterScreen({onGoLogin}: Props) {
   useEffect(() => {
     trackEvent('signup_start', {source: 'register_screen'});
   }, []);
+
+  useEffect(() => {
+    if (!showSummary) {
+      trackEvent('onboarding_step_view', {step});
+    }
+  }, [showSummary, step]);
 
   const stepError = useMemo(() => {
     switch (step) {
@@ -53,16 +76,25 @@ export function RegisterScreen({onGoLogin}: Props) {
         if (!birthDate.trim()) {
           return 'Doğum tarihi zorunludur (GG/AA/YYYY).';
         }
+        if (!unknownBirthTime && !birthTime.trim()) {
+          return 'Doğum saati girin ya da "Bilmiyorum" seçin.';
+        }
+        if (!city.trim()) {
+          return 'Şehir zorunludur.';
+        }
+        if (!country.trim()) {
+          return 'Ülke zorunludur.';
+        }
         return '';
       case 5:
         if (!intent.trim()) {
-          return 'Niyet alanı zorunludur.';
+          return 'Niyet seçimi zorunludur.';
         }
         return '';
       default:
         return '';
     }
-  }, [birthDate, email, fullName, intent, password, step]);
+  }, [birthDate, birthTime, city, country, email, fullName, intent, password, step, unknownBirthTime]);
 
   const onNext = () => {
     setLocalSuccess('');
@@ -89,15 +121,52 @@ export function RegisterScreen({onGoLogin}: Props) {
         email: email.trim(),
         password,
         birthDate: birthDate.trim(),
+        birthTime: unknownBirthTime ? undefined : birthTime.trim(),
+        city: city.trim(),
+        country: country.trim(),
         intent: intent.trim(),
       }).unwrap();
 
       trackEvent('signup_complete', {source: 'register_screen'});
-      setLocalSuccess('Kayıt tamamlandı. Hoş geldin ✨');
+      setLocalSuccess('Hesabın oluşturuldu. Son adım: kısa özetin hazır ✨');
+      setShowSummary(true);
     } catch {
       // API error state aşağıda gösteriliyor.
     }
   };
+
+  const completeOnboarding = () => {
+    trackEvent('onboarding_complete', {
+      intent,
+      birthTimeKnown: !unknownBirthTime,
+    });
+    dispatch(setOnboardingComplete(true));
+  };
+
+  if (showSummary) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>Onboarding tamamlandı 🎉</Text>
+        <Text style={styles.subtitle}>
+          Kısa profilin hazır. İlk rehberliğine geçmeye hazırsın.
+        </Text>
+
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryLabel}>☀️ Güneş: Hesaplanıyor...</Text>
+          <Text style={styles.summaryLabel}>🌙 Ay: Hesaplanıyor...</Text>
+          <Text style={styles.summaryLabel}>⬆️ Yükselen: Hesaplanıyor...</Text>
+        </View>
+
+        <Text style={styles.recommendation}>
+          İlk kişisel önerin: Bugün 10 dakika boyunca niyetine odaklanıp küçük ve net bir adım seç.
+        </Text>
+
+        <Pressable onPress={completeOnboarding} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Ana Sayfaya Geç</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -140,25 +209,66 @@ export function RegisterScreen({onGoLogin}: Props) {
       ) : null}
 
       {step === 4 ? (
-        <TextInput
-          placeholder="Doğum Tarihi (GG/AA/YYYY)"
-          placeholderTextColor={colors.textSecondary}
-          style={styles.input}
-          value={birthDate}
-          onChangeText={setBirthDate}
-        />
+        <View style={styles.group}>
+          <TextInput
+            placeholder="Doğum Tarihi (GG/AA/YYYY)"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+            value={birthDate}
+            onChangeText={setBirthDate}
+          />
+
+          <TextInput
+            placeholder="Doğum Saati (SS:DD)"
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.input, unknownBirthTime && styles.disabledInput]}
+            value={birthTime}
+            onChangeText={setBirthTime}
+            editable={!unknownBirthTime}
+          />
+
+          <Pressable
+            onPress={() => setUnknownBirthTime(current => !current)}
+            style={[styles.intentOption, unknownBirthTime && styles.intentOptionActive]}>
+            <Text style={[styles.intentText, unknownBirthTime && styles.intentTextActive]}>
+              Bilmiyorum
+            </Text>
+          </Pressable>
+
+          <TextInput
+            placeholder="Şehir"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+            value={city}
+            onChangeText={setCity}
+          />
+
+          <TextInput
+            placeholder="Ülke"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+            value={country}
+            onChangeText={setCountry}
+          />
+        </View>
       ) : null}
 
       {step === 5 ? (
-        <TextInput
-          placeholder="Bugün en çok neye odaklanmak istiyorsun?"
-          placeholderTextColor={colors.textSecondary}
-          style={[styles.input, styles.multilineInput]}
-          multiline
-          numberOfLines={3}
-          value={intent}
-          onChangeText={setIntent}
-        />
+        <View style={styles.group}>
+          <Text style={styles.intentHeader}>Bugün uygulamadan ne bekliyorsun?</Text>
+          <Text style={styles.subtitle}>Bir niyet seç, günlük önerilerin buna göre şekillensin.</Text>
+          {INTENT_OPTIONS.map(option => {
+            const selected = option === intent;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setIntent(option)}
+                style={[styles.intentOption, selected && styles.intentOptionActive]}>
+                <Text style={[styles.intentText, selected && styles.intentTextActive]}>{option}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       ) : null}
 
       {stepError ? <Text style={styles.error}>{stepError}</Text> : null}
@@ -177,7 +287,7 @@ export function RegisterScreen({onGoLogin}: Props) {
             {isLoading ? (
               <ActivityIndicator color={colors.textPrimary} />
             ) : (
-              <Text style={styles.primaryButtonText}>Kayıt Ol</Text>
+              <Text style={styles.primaryButtonText}>Özeti Gör</Text>
             )}
           </Pressable>
         )}
@@ -210,6 +320,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 6,
   },
+  subtitle: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   input: {
     borderWidth: 1,
     borderColor: '#2B355D',
@@ -218,9 +333,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  multilineInput: {
-    minHeight: 88,
-    textAlignVertical: 'top',
+  disabledInput: {
+    opacity: 0.5,
+  },
+  group: {
+    gap: 8,
+  },
+  intentHeader: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  intentOption: {
+    borderWidth: 1,
+    borderColor: '#2B355D',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
+  },
+  intentOptionActive: {
+    backgroundColor: '#4A63F5',
+    borderColor: '#4A63F5',
+  },
+  intentText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  intentTextActive: {
+    color: colors.textPrimary,
+    fontWeight: '700',
   },
   row: {
     flexDirection: 'row',
@@ -261,5 +403,23 @@ const styles = StyleSheet.create({
     color: '#8EA2FF',
     marginTop: 8,
     textAlign: 'center',
+  },
+  summaryBox: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#2B355D',
+    borderRadius: 10,
+    padding: 12,
+    gap: 6,
+    backgroundColor: '#1B2240',
+  },
+  summaryLabel: {
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  recommendation: {
+    color: colors.textSecondary,
+    marginTop: 8,
+    lineHeight: 20,
   },
 });

@@ -12,6 +12,9 @@ type RegisterRequest = {
   email: string;
   password: string;
   birthDate: string;
+  birthTime?: string;
+  city: string;
+  country: string;
   intent: string;
 };
 
