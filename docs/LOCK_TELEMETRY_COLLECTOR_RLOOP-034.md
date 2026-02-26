@@ -37,3 +37,8 @@ LOCK_TELEMETRY_MAX_SAMPLES=30 \
 `concurrency-harness-rloop029.sh` içinde:
 - `LOCK_TELEMETRY_LIVE_COLLECT=1` iken collector otomatik başlar.
 - `LOCK_TELEMETRY_FILE` verilmezse auto path: `reports/lock-telemetry-live-<timestamp>.ndjson`
+- Telemetry içinden `top_blocker_fingerprint` aggregate edilip report/alert payload'a taşınır.
+
+## Redaction policy
+- Raw SQL query taşınmaz.
+- Sadece hash tabanlı fingerprint + query family (örn: `update`) saklanır.
