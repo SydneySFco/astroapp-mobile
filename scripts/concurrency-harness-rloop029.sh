@@ -42,6 +42,7 @@ HARNESS_LEASE_REVISIONS="${HARNESS_LEASE_REVISIONS:-}"
 LOCK_TELEMETRY_FILE="${LOCK_TELEMETRY_FILE:-}"
 LATENCY_SPIKE_THRESHOLD_MS="${LATENCY_SPIKE_THRESHOLD_MS:-500}"
 CONTENTION_WINDOW_SEC="${CONTENTION_WINDOW_SEC:-5}"
+CONFIDENCE_CALIBRATION_FILE="${CONFIDENCE_CALIBRATION_FILE:-reports/confidence-calibration.json}"
 
 # Optional live collector integration (RLOOP-034)
 LOCK_TELEMETRY_LIVE_COLLECT="${LOCK_TELEMETRY_LIVE_COLLECT:-0}"
@@ -469,7 +470,7 @@ while (( i <= ITERATIONS )); do
   i=$((i + 1))
 done
 
-METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKER_FAN_OUT" "$JOB_POOL_SIZE" "$LATENCY_SPIKE_THRESHOLD_MS" "$CONTENTION_WINDOW_SEC" "$LOCK_TELEMETRY_FILE"
+METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKER_FAN_OUT" "$JOB_POOL_SIZE" "$LATENCY_SPIKE_THRESHOLD_MS" "$CONTENTION_WINDOW_SEC" "$LOCK_TELEMETRY_FILE" "$CONFIDENCE_CALIBRATION_FILE"
 import json, statistics, sys, datetime
 from collections import defaultdict
 
@@ -480,6 +481,7 @@ pool_size=int(sys.argv[4])
 lat_spike=float(sys.argv[5])
 window_sec=int(sys.argv[6])
 lock_file=sys.argv[7]
+calibration_file=sys.argv[8]
 
 rows=[]
 with open(path,"r",encoding="utf-8") as f:
@@ -620,19 +622,38 @@ if lock_file:
         telemetry_rows=[]
 
 contention_windows=[]
+blocking_graph_samples=0
+blocking_graph_edge_count=0
+blocking_graph_max_edges_per_sample=0
+blocking_graph_max_blockers_per_blocked=0
+
 for t in telemetry_rows:
     ts=int(t.get("timestamp_unix",0))
     waiting=int(t.get("waiting_count",0))
     blocked=int(t.get("blocked_queries",0))
     lock_wait=int(t.get("lock_waiters",0))
-    if waiting>0 or blocked>0 or lock_wait>0:
+    g=t.get("blocking_graph_summary") or {}
+    edge_count=int(g.get("edge_count",0) or 0)
+    max_blockers=int(g.get("max_blockers_per_blocked",0) or 0)
+
+    if edge_count > 0:
+        blocking_graph_samples += 1
+    blocking_graph_edge_count += edge_count
+    blocking_graph_max_edges_per_sample=max(blocking_graph_max_edges_per_sample, edge_count)
+    blocking_graph_max_blockers_per_blocked=max(blocking_graph_max_blockers_per_blocked, max_blockers)
+
+    if waiting>0 or blocked>0 or lock_wait>0 or edge_count>0:
         contention_windows.append({
             "start_unix": ts,
             "end_unix": ts + window_sec,
             "waiting_count": waiting,
             "blocked_queries": blocked,
             "lock_waiters": lock_wait,
-            "sample_source": t.get("sample_source","pg_locks+pg_stat_activity")
+            "blocking_graph_summary": {
+              "edge_count": edge_count,
+              "max_blockers_per_blocked": max_blockers
+            },
+            "sample_source": t.get("sample_source","pg_locks+pg_stat_activity+pg_blocking_pids")
         })
 
 spikes_correlated=0
@@ -645,6 +666,7 @@ for sp in latency_spikes:
 
 corr_ratio=(spikes_correlated/len(latency_spikes)) if latency_spikes else 0.0
 telemetry_strength=min(1.0, len(contention_windows)/max(iterations,1))
+blocking_graph_density=(blocking_graph_samples/max(len(telemetry_rows),1)) if telemetry_rows else 0.0
 class_total=max(len(rows),1)
 
 def clamp(v):
@@ -663,7 +685,7 @@ stale_race_ratio=classes["stale-race"]/class_total
 unknown_ratio=classes["unknown"]/class_total
 
 network_score=clamp((network_ratio*0.7) + ((1.0-corr_ratio)*0.2) + ((1.0-telemetry_strength)*0.1))
-db_lock_score=clamp((db_lock_ratio*0.55) + (corr_ratio*0.35) + (telemetry_strength*0.1))
+db_lock_score=clamp((db_lock_ratio*0.5) + (corr_ratio*0.3) + (telemetry_strength*0.1) + (blocking_graph_density*0.1))
 stale_race_score=clamp((stale_race_ratio*0.65) + ((1.0-corr_ratio)*0.2) + ((1.0-db_lock_ratio)*0.15))
 unknown_score=clamp((unknown_ratio*0.8) + ((1.0-telemetry_strength)*0.2))
 
@@ -676,7 +698,7 @@ class_confidence={
   "db-lock": {
     "score": round(db_lock_score,4),
     "band": band(db_lock_score),
-    "signals": {"class_ratio": round(db_lock_ratio,4), "corr_ratio": round(corr_ratio,4), "telemetry_strength": round(telemetry_strength,4)}
+    "signals": {"class_ratio": round(db_lock_ratio,4), "corr_ratio": round(corr_ratio,4), "telemetry_strength": round(telemetry_strength,4), "blocking_graph_density": round(blocking_graph_density,4)}
   },
   "stale-race": {
     "score": round(stale_race_score,4),
@@ -690,7 +712,41 @@ class_confidence={
   }
 }
 
-dominant_class=max(class_confidence.items(), key=lambda kv: kv[1]["score"])[0]
+calibration_meta={
+  "enabled": False,
+  "file": calibration_file,
+  "loaded": False,
+  "notes": "fallback to baseline weights"
+}
+
+calibrated_confidence={k: dict(v) for k,v in class_confidence.items()}
+try:
+    with open(calibration_file, "r", encoding="utf-8") as cf:
+        params=json.load(cf)
+    calibration_meta["enabled"]=True
+    calibration_meta["loaded"]=True
+    calibration_meta["version"]=params.get("version","v1")
+    calibration_meta["history_runs_used"]=int(params.get("history_runs_used",0))
+    per_class=params.get("per_class",{}) if isinstance(params,dict) else {}
+    for cls, base in class_confidence.items():
+        cfg=per_class.get(cls,{}) if isinstance(per_class,dict) else {}
+        scale=float(cfg.get("scale",1.0))
+        shift=float(cfg.get("shift",0.0))
+        score=clamp((float(base["score"]) * scale) + shift)
+        calibrated_confidence[cls]={
+          "score": round(score,4),
+          "band": band(score),
+          "signals": base.get("signals",{}),
+          "calibration": {
+            "scale": round(scale,4),
+            "shift": round(shift,4)
+          }
+        }
+except Exception:
+    pass
+
+baseline_dominant_class=max(class_confidence.items(), key=lambda kv: kv[1]["score"])[0]
+dominant_class=max(calibrated_confidence.items(), key=lambda kv: kv[1]["score"])[0]
 
 contention_correlation={
   "telemetry_enabled": bool(lock_file),
@@ -700,17 +756,36 @@ contention_correlation={
   "latency_spikes": latency_spikes,
   "spikes_correlated_with_contention": spikes_correlated,
   "spike_contention_correlation_ratio": round(corr_ratio,4),
+  "blocking_graph_summary": {
+    "samples_with_edges": blocking_graph_samples,
+    "edge_count_total": blocking_graph_edge_count,
+    "max_edges_per_sample": blocking_graph_max_edges_per_sample,
+    "max_blockers_per_blocked": blocking_graph_max_blockers_per_blocked,
+    "edge_density": round(blocking_graph_density,4)
+  },
   "confidence": {
-    "contention_class_confidence": class_confidence,
+    "contention_class_confidence": calibrated_confidence,
+    "confidence_before_calibration": class_confidence,
+    "confidence_after_calibration": calibrated_confidence,
+    "dominant_contention_class_before_calibration": baseline_dominant_class,
     "dominant_contention_class": dominant_class,
-    "dominant_confidence_score": class_confidence[dominant_class]["score"],
-    "dominant_confidence_band": class_confidence[dominant_class]["band"]
+    "dominant_confidence_score": calibrated_confidence[dominant_class]["score"],
+    "dominant_confidence_band": calibrated_confidence[dominant_class]["band"],
+    "calibration": calibration_meta,
+    "db_lock_accuracy_notes": {
+      "heuristic": "db-lock confidence rises with lock-class ratio + latency/contention correlation + telemetry coverage",
+      "known_limitations": [
+        "No transaction-level lock owner attribution without blocker graph edges",
+        "Short windows can under-sample transient lock chains"
+      ]
+    }
   },
   "sampling_plan": {
     "interval_sec": 1,
     "recommended_queries": [
       "select now() as sampled_at, count(*) filter (where not granted) as waiting_count from pg_locks;",
-      "select now() as sampled_at, count(*) filter (where wait_event_type = 'Lock') as lock_waiters, count(*) filter (where state='active') as active_queries from pg_stat_activity;"
+      "select now() as sampled_at, count(*) filter (where wait_event_type = 'Lock') as lock_waiters, count(*) filter (where state='active') as active_queries from pg_stat_activity;",
+      "select sa.pid as blocked_pid, unnest(pg_blocking_pids(sa.pid)) as blocker_pid from pg_stat_activity sa where cardinality(pg_blocking_pids(sa.pid)) > 0;"
     ]
   }
 }

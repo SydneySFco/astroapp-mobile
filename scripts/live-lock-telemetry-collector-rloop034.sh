@@ -35,6 +35,23 @@ with l as (
     count(*) filter (where state = 'active' and wait_event_type = 'Lock') as blocked_queries,
     count(*) filter (where state = 'active') as active_queries
   from pg_stat_activity
+), blocking_edges as (
+  select
+    sa.pid as blocked_pid,
+    unnest(pg_blocking_pids(sa.pid)) as blocker_pid
+  from pg_stat_activity sa
+  where cardinality(pg_blocking_pids(sa.pid)) > 0
+), g as (
+  select
+    count(*) as edge_count,
+    count(distinct blocker_pid) as blocker_pid_count,
+    count(distinct blocked_pid) as blocked_pid_count,
+    coalesce(max(edge_per_blocked),0) as max_blockers_per_blocked
+  from (
+    select blocked_pid, blocker_pid,
+           count(*) over(partition by blocked_pid) as edge_per_blocked
+    from blocking_edges
+  ) t
 )
 select json_build_object(
   'timestamp_unix', extract(epoch from clock_timestamp())::bigint,
@@ -43,9 +60,15 @@ select json_build_object(
   'blocked_queries', coalesce(a.blocked_queries,0),
   'lock_waiters', coalesce(a.lock_waiters,0),
   'active_queries', coalesce(a.active_queries,0),
-  'sample_source', '${LOCK_TELEMETRY_SAMPLE_SOURCE}'
+  'blocking_graph_summary', json_build_object(
+    'edge_count', coalesce(g.edge_count,0),
+    'blocker_pid_count', coalesce(g.blocker_pid_count,0),
+    'blocked_pid_count', coalesce(g.blocked_pid_count,0),
+    'max_blockers_per_blocked', coalesce(g.max_blockers_per_blocked,0)
+  ),
+  'sample_source', '${LOCK_TELEMETRY_SAMPLE_SOURCE}+pg_blocking_pids'
 )::text
-from l, a;
+from l, a, g;
 SQL
 )"
 

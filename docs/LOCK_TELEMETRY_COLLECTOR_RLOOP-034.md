@@ -8,7 +8,7 @@ Run-time sırasında PostgreSQL lock sinyallerini lightweight şekilde toplayıp
 
 ## Sample output (NDJSON)
 ```json
-{"timestamp_unix":1700000000,"sampled_at_utc":"2026-02-26T13:00:00.123Z","waiting_count":2,"blocked_queries":1,"lock_waiters":1,"active_queries":8,"sample_source":"pg_locks+pg_stat_activity"}
+{"timestamp_unix":1700000000,"sampled_at_utc":"2026-02-26T13:00:00.123Z","waiting_count":2,"blocked_queries":1,"lock_waiters":1,"active_queries":8,"blocking_graph_summary":{"edge_count":2,"blocker_pid_count":1,"blocked_pid_count":2,"max_blockers_per_blocked":1},"sample_source":"pg_locks+pg_stat_activity+pg_blocking_pids"}
 ```
 
 ## Query sources
@@ -17,6 +17,9 @@ Run-time sırasında PostgreSQL lock sinyallerini lightweight şekilde toplayıp
   - `wait_event_type='Lock'` waiters
   - `state='active' and wait_event_type='Lock'` blocked_queries
   - `state='active'` active_queries
+- `pg_blocking_pids()`:
+  - blocked -> blocker edge örnekleme
+  - graph summary: `edge_count`, `blocker_pid_count`, `blocked_pid_count`, `max_blockers_per_blocked`
 
 ## Configuration
 - `LOCK_TELEMETRY_DB_URL` (required, fallback `SUPABASE_DB_URL`)
