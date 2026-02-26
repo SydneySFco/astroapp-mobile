@@ -1,11 +1,14 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {StyleSheet, Text, View} from 'react-native';
 import {useDispatch} from 'react-redux';
 
 import {ScreenState} from '../components/ScreenState';
+import {Button} from '../components/ui/Button';
+import {Card} from '../components/ui/Card';
+import {StateBanner} from '../components/ui/StateBanner';
 import {trackEvent} from '../features/analytics/analytics';
 import {setPremium} from '../features/subscription/subscriptionSlice';
-import {colors} from '../theme/colors';
+import {useTheme} from '../theme/ThemeProvider';
 
 type Props = {
   onClose: () => void;
@@ -24,6 +27,8 @@ const VALUE_PROPS = [
 const MOCK_TIMEOUT_MS = 1200;
 
 export function PaywallScreen({onClose}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const dispatch = useDispatch();
   const [selectedPlan, setSelectedPlan] = useState<PlanType>('yearly');
   const [result, setResult] = useState<PurchaseResult>('idle');
@@ -99,9 +104,7 @@ export function PaywallScreen({onClose}: Props) {
           }}
         />
 
-        <Pressable onPress={onClose}>
-          <Text style={styles.backText}>Geri dön</Text>
-        </Pressable>
+        <Button label="Geri dön" variant="ghost" onPress={onClose} />
       </View>
     );
   }
@@ -112,169 +115,106 @@ export function PaywallScreen({onClose}: Props) {
       <Text style={styles.subtitle}>Daha derin ve tutarlı rehberlik için planını seç.</Text>
 
       <View style={styles.planRow}>
-        <Pressable
-          style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardActive]}
-          onPress={() => setSelectedPlan('monthly')}>
+        <Card style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardActive]}>
           <Text style={styles.planName}>Aylık</Text>
           <Text style={styles.planPrice}>₺199 / ay</Text>
-        </Pressable>
+          <Button label="Aylık Seç" variant="ghost" onPress={() => setSelectedPlan('monthly')} />
+        </Card>
 
-        <Pressable
-          style={[styles.planCard, selectedPlan === 'yearly' && styles.planCardActive]}
-          onPress={() => setSelectedPlan('yearly')}>
+        <Card style={[styles.planCard, selectedPlan === 'yearly' && styles.planCardActive]}>
           <Text style={styles.planName}>Yıllık</Text>
           <Text style={styles.planPrice}>₺1.199 / yıl</Text>
           <Text style={styles.badge}>2 ay bedava</Text>
-        </Pressable>
+          <Button label="Yıllık Seç" variant="ghost" onPress={() => setSelectedPlan('yearly')} />
+        </Card>
       </View>
 
-      <View style={styles.valueBox}>
+      <Card>
         {VALUE_PROPS.map(item => (
           <Text key={item} style={styles.valueItem}>
             • {item}
           </Text>
         ))}
-      </View>
+      </Card>
 
-      <Pressable style={styles.primaryButton} onPress={() => runPurchase('subscribe')}>
-        <Text style={styles.primaryButtonText}>Premium’u Başlat</Text>
-      </Pressable>
-
-      <Pressable onPress={() => runPurchase('restore')}>
-        <Text style={styles.restoreText}>Restore Purchases</Text>
-      </Pressable>
+      <Button label="Premium’u Başlat" onPress={() => runPurchase('subscribe')} />
+      <Button label="Restore Purchases" variant="ghost" onPress={() => runPurchase('restore')} />
 
       {result !== 'idle' ? (
-        <Text
-          style={[
-            styles.resultText,
-            result === 'success' ? styles.successText : result === 'fail' ? styles.failText : styles.cancelText,
-          ]}>
-          {resultMessage}
-        </Text>
+        <StateBanner
+          tone={result === 'success' ? 'success' : result === 'fail' ? 'error' : 'warning'}
+          description={resultMessage}
+        />
       ) : null}
 
       <View style={styles.resultActions}>
-        <Pressable style={styles.resultButton} onPress={() => setResult('fail')}>
-          <Text style={styles.resultButtonText}>Fail</Text>
-        </Pressable>
-        <Pressable style={styles.resultButton} onPress={() => setResult('cancel')}>
-          <Text style={styles.resultButtonText}>Cancel</Text>
-        </Pressable>
+        <Button label="Fail" variant="secondary" onPress={() => setResult('fail')} style={styles.resultButton} />
+        <Button
+          label="Cancel"
+          variant="secondary"
+          onPress={() => setResult('cancel')}
+          style={styles.resultButton}
+        />
       </View>
 
-      <Pressable onPress={onClose}>
-        <Text style={styles.backText}>Geri dön</Text>
-      </Pressable>
+      <Button label="Geri dön" variant="ghost" onPress={onClose} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-    gap: 12,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: colors.textSecondary,
-  },
-  planRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  planCard: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    padding: 12,
-    gap: 4,
-  },
-  planCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  planName: {
-    color: colors.textPrimary,
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  planPrice: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  badge: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  valueBox: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-    backgroundColor: colors.card,
-  },
-  valueItem: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: colors.ctaPrimaryText,
-    fontWeight: '800',
-  },
-  restoreText: {
-    color: colors.primary,
-    textAlign: 'center',
-    fontWeight: '700',
-  },
-  resultText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  successText: {
-    color: colors.success,
-  },
-  failText: {
-    color: colors.danger,
-  },
-  cancelText: {
-    color: colors.warning,
-  },
-  resultActions: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  resultButton: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  resultButtonText: {
-    color: colors.ctaSecondaryText,
-    fontWeight: '700',
-  },
-  backText: {
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: 20,
+      gap: 12,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontSize: 28,
+      fontWeight: '800',
+    },
+    subtitle: {
+      color: colors.textSecondary,
+    },
+    planRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    planCard: {
+      flex: 1,
+      padding: 12,
+      gap: 4,
+    },
+    planCardActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    planName: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    planPrice: {
+      color: colors.textSecondary,
+      fontSize: 13,
+    },
+    badge: {
+      color: colors.accent,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    valueItem: {
+      color: colors.textSecondary,
+      lineHeight: 20,
+    },
+    resultActions: {
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'center',
+    },
+    resultButton: {
+      flex: 1,
+    },
+  });

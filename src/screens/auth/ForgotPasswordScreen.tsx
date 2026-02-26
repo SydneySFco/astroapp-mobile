@@ -1,16 +1,22 @@
 import React, {useMemo, useState} from 'react';
-import {Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, StyleSheet, Text} from 'react-native';
 
 import {ScreenState} from '../../components/ScreenState';
+import {Button} from '../../components/ui/Button';
+import {Card} from '../../components/ui/Card';
+import {Input} from '../../components/ui/Input';
+import {StateBanner} from '../../components/ui/StateBanner';
 import {trackEvent} from '../../features/analytics/analytics';
 import {useForgotPasswordMutation} from '../../features/auth/authApi';
-import {colors} from '../../theme/colors';
+import {useTheme} from '../../theme/ThemeProvider';
 
 type Props = {
   onGoLogin: () => void;
 };
 
 export function ForgotPasswordScreen({onGoLogin}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [localSuccess, setLocalSuccess] = useState('');
   const [forgotPassword, {isLoading, isError, reset}] = useForgotPasswordMutation();
@@ -42,7 +48,7 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
   };
 
   return (
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <Text style={styles.title}>Şifremi Unuttum</Text>
       <Text style={styles.subtitle}>
         Hesabına bağlı e-posta adresini gir. Sana şifre sıfırlama bağlantısı gönderelim.
@@ -56,10 +62,8 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
         />
       ) : null}
 
-      <TextInput
+      <Input
         placeholder="E-posta"
-        placeholderTextColor={colors.textSecondary}
-        style={styles.input}
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -68,9 +72,7 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
 
       {email.length > 0 && emailError ? <Text style={styles.error}>{emailError}</Text> : null}
 
-      <Pressable onPress={onSubmit} style={styles.primaryButton} disabled={isLoading}>
-        <Text style={styles.primaryButtonText}>Bağlantı Gönder</Text>
-      </Pressable>
+      <Button label="Bağlantı Gönder" onPress={onSubmit} disabled={isLoading} />
 
       {isError ? (
         <ScreenState
@@ -84,62 +86,35 @@ export function ForgotPasswordScreen({onGoLogin}: Props) {
           }}
         />
       ) : null}
-      {localSuccess ? <Text style={styles.success}>{localSuccess}</Text> : null}
+      {localSuccess ? <StateBanner tone="success" description={localSuccess} /> : null}
 
       <Pressable onPress={onGoLogin}>
         <Text style={styles.link}>Giriş ekranına dön</Text>
       </Pressable>
-    </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    color: colors.textPrimary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  primaryButton: {
-    marginTop: 8,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: colors.ctaPrimaryText,
-    fontWeight: '700',
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 12,
-  },
-  success: {
-    color: colors.success,
-    fontSize: 12,
-  },
-  link: {
-    color: colors.primary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    card: {gap: 8},
+    title: {
+      color: colors.textPrimary,
+      fontSize: 24,
+      fontWeight: '700',
+    },
+    subtitle: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      marginBottom: 8,
+    },
+    error: {
+      color: colors.danger,
+      fontSize: 12,
+    },
+    link: {
+      color: colors.primary,
+      marginTop: 8,
+      textAlign: 'center',
+    },
+  });

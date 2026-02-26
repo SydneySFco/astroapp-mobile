@@ -1,12 +1,16 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Pressable, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {useDispatch} from 'react-redux';
 
 import {ScreenState} from '../../components/ScreenState';
+import {Button} from '../../components/ui/Button';
+import {Card} from '../../components/ui/Card';
+import {Input} from '../../components/ui/Input';
+import {StateBanner} from '../../components/ui/StateBanner';
 import {trackEvent} from '../../features/analytics/analytics';
 import {useRegisterMutation} from '../../features/auth/authApi';
 import {setOnboardingComplete} from '../../features/onboarding/onboardingSlice';
-import {colors} from '../../theme/colors';
+import {useTheme} from '../../theme/ThemeProvider';
 
 type Props = {
   onGoLogin: () => void;
@@ -21,6 +25,8 @@ const INTENT_OPTIONS = [
 ];
 
 export function RegisterScreen({onGoLogin}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const dispatch = useDispatch();
 
   const [step, setStep] = useState(1);
@@ -146,31 +152,27 @@ export function RegisterScreen({onGoLogin}: Props) {
 
   if (showSummary) {
     return (
-      <View style={styles.card}>
+      <Card style={styles.card}>
         <Text style={styles.title}>Onboarding tamamlandı 🎉</Text>
-        <Text style={styles.subtitle}>
-          Kısa profilin hazır. İlk rehberliğine geçmeye hazırsın.
-        </Text>
+        <Text style={styles.subtitle}>Kısa profilin hazır. İlk rehberliğine geçmeye hazırsın.</Text>
 
-        <View style={styles.summaryBox}>
+        <Card style={styles.summaryBox}>
           <Text style={styles.summaryLabel}>☀️ Güneş: Hesaplanıyor...</Text>
           <Text style={styles.summaryLabel}>🌙 Ay: Hesaplanıyor...</Text>
           <Text style={styles.summaryLabel}>⬆️ Yükselen: Hesaplanıyor...</Text>
-        </View>
+        </Card>
 
         <Text style={styles.recommendation}>
           İlk kişisel önerin: Bugün 10 dakika boyunca niyetine odaklanıp küçük ve net bir adım seç.
         </Text>
 
-        <Pressable onPress={completeOnboarding} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Ana Sayfaya Geç</Text>
-        </Pressable>
-      </View>
+        <Button label="Ana Sayfaya Geç" onPress={completeOnboarding} />
+      </Card>
     );
   }
 
   return (
-    <View style={styles.card}>
+    <Card style={styles.card}>
       <Text style={styles.title}>Kayıt Ol</Text>
       <Text style={styles.stepIndicator}>
         Adım {step}/{TOTAL_STEPS}
@@ -184,21 +186,11 @@ export function RegisterScreen({onGoLogin}: Props) {
         />
       ) : null}
 
-      {step === 1 ? (
-        <TextInput
-          placeholder="Ad Soyad"
-          placeholderTextColor={colors.textSecondary}
-          style={styles.input}
-          value={fullName}
-          onChangeText={setFullName}
-        />
-      ) : null}
+      {step === 1 ? <Input placeholder="Ad Soyad" value={fullName} onChangeText={setFullName} /> : null}
 
       {step === 2 ? (
-        <TextInput
+        <Input
           placeholder="E-posta"
-          placeholderTextColor={colors.textSecondary}
-          style={styles.input}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -207,58 +199,29 @@ export function RegisterScreen({onGoLogin}: Props) {
       ) : null}
 
       {step === 3 ? (
-        <TextInput
-          placeholder="Şifre"
-          placeholderTextColor={colors.textSecondary}
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        <Input placeholder="Şifre" value={password} onChangeText={setPassword} secureTextEntry />
       ) : null}
 
       {step === 4 ? (
         <View style={styles.group}>
-          <TextInput
-            placeholder="Doğum Tarihi (GG/AA/YYYY)"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            value={birthDate}
-            onChangeText={setBirthDate}
-          />
+          <Input placeholder="Doğum Tarihi (GG/AA/YYYY)" value={birthDate} onChangeText={setBirthDate} />
 
-          <TextInput
+          <Input
             placeholder="Doğum Saati (SS:DD)"
-            placeholderTextColor={colors.textSecondary}
-            style={[styles.input, unknownBirthTime && styles.disabledInput]}
+            style={unknownBirthTime ? styles.disabledInput : undefined}
             value={birthTime}
             onChangeText={setBirthTime}
             editable={!unknownBirthTime}
           />
 
-          <Pressable
+          <Button
             onPress={() => setUnknownBirthTime(current => !current)}
-            style={[styles.intentOption, unknownBirthTime && styles.intentOptionActive]}>
-            <Text style={[styles.intentText, unknownBirthTime && styles.intentTextActive]}>
-              Bilmiyorum
-            </Text>
-          </Pressable>
-
-          <TextInput
-            placeholder="Şehir"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            value={city}
-            onChangeText={setCity}
+            label="Bilmiyorum"
+            variant={unknownBirthTime ? 'primary' : 'secondary'}
           />
 
-          <TextInput
-            placeholder="Ülke"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            value={country}
-            onChangeText={setCountry}
-          />
+          <Input placeholder="Şehir" value={city} onChangeText={setCity} />
+          <Input placeholder="Ülke" value={country} onChangeText={setCountry} />
         </View>
       ) : null}
 
@@ -280,21 +243,15 @@ export function RegisterScreen({onGoLogin}: Props) {
         </View>
       ) : null}
 
-      {stepError ? <Text style={styles.error}>{stepError}</Text> : null}
+      {stepError ? <StateBanner tone="error" description={stepError} /> : null}
 
       <View style={styles.row}>
-        <Pressable onPress={onPrev} style={styles.secondaryButton} disabled={step === 1 || isLoading}>
-          <Text style={styles.secondaryButtonText}>Geri</Text>
-        </Pressable>
+        <Button label="Geri" variant="secondary" onPress={onPrev} disabled={step === 1 || isLoading} style={styles.rowButton} />
 
         {step < TOTAL_STEPS ? (
-          <Pressable onPress={onNext} style={styles.primaryButton} disabled={isLoading}>
-            <Text style={styles.primaryButtonText}>İleri</Text>
-          </Pressable>
+          <Button label="İleri" onPress={onNext} disabled={isLoading} style={styles.rowButton} />
         ) : (
-          <Pressable onPress={onSubmit} style={styles.primaryButton} disabled={isLoading}>
-            <Text style={styles.primaryButtonText}>Özeti Gör</Text>
-          </Pressable>
+          <Button label="Özeti Gör" onPress={onSubmit} disabled={isLoading} style={styles.rowButton} />
         )}
       </View>
 
@@ -310,134 +267,88 @@ export function RegisterScreen({onGoLogin}: Props) {
           }}
         />
       ) : null}
-      {localSuccess ? <Text style={styles.success}>{localSuccess}</Text> : null}
+      {localSuccess ? <StateBanner tone="success" description={localSuccess} /> : null}
 
       <Pressable onPress={onGoLogin}>
         <Text style={styles.link}>Zaten hesabın var mı? Giriş yap</Text>
       </Pressable>
-    </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  stepIndicator: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    color: colors.textPrimary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  disabledInput: {
-    opacity: 0.5,
-  },
-  group: {
-    gap: 8,
-  },
-  intentHeader: {
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  intentOption: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'transparent',
-  },
-  intentOptionActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  intentText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  intentTextActive: {
-    color: colors.ctaPrimaryText,
-    fontWeight: '700',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: colors.ctaPrimaryText,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: colors.ctaSecondaryText,
-    fontWeight: '700',
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 12,
-  },
-  success: {
-    color: colors.success,
-    fontSize: 12,
-  },
-  link: {
-    color: colors.primary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  summaryBox: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 12,
-    gap: 6,
-    backgroundColor: colors.primarySoft,
-  },
-  summaryLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-  },
-  recommendation: {
-    color: colors.textSecondary,
-    marginTop: 8,
-    lineHeight: 20,
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    card: {gap: 8},
+    title: {
+      color: colors.textPrimary,
+      fontSize: 24,
+      fontWeight: '700',
+    },
+    stepIndicator: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      marginBottom: 6,
+    },
+    subtitle: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    disabledInput: {
+      opacity: 0.5,
+    },
+    group: {
+      gap: 8,
+    },
+    intentHeader: {
+      color: colors.textPrimary,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    intentOption: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: 'transparent',
+    },
+    intentOptionActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    intentText: {
+      color: colors.textSecondary,
+      fontSize: 13,
+    },
+    intentTextActive: {
+      color: colors.ctaPrimaryText,
+      fontWeight: '700',
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 8,
+    },
+    rowButton: {
+      flex: 1,
+    },
+    link: {
+      color: colors.primary,
+      marginTop: 8,
+      textAlign: 'center',
+    },
+    summaryBox: {
+      marginTop: 8,
+      backgroundColor: colors.primarySoft,
+    },
+    summaryLabel: {
+      color: colors.textPrimary,
+      fontSize: 14,
+    },
+    recommendation: {
+      color: colors.textSecondary,
+      marginTop: 8,
+      lineHeight: 20,
+    },
+  });

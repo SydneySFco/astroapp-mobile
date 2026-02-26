@@ -18,8 +18,8 @@ import {ReportReadScreen} from '../screens/ReportReadScreen';
 import {ReportsMarketplaceScreen} from '../screens/ReportsMarketplaceScreen';
 import {SettingsScreen} from '../screens/SettingsScreen';
 import {RootState} from '../store/store';
-import {colors} from '../theme/colors';
 import {appBuildLabel} from '../config/appConfig';
+import {useTheme} from '../theme/ThemeProvider';
 
 type AppScreen =
   | 'home'
@@ -34,6 +34,7 @@ type AppScreen =
 
 export function App() {
   const dispatch = useDispatch();
+  const {colors, preference, setPreference, resolvedMode} = useTheme();
   const onboardingComplete = useSelector((state: RootState) => state.onboarding.completed);
   const reportsCatalog = useSelector((state: RootState) => state.reports.catalog);
   const purchasedReportIds = useSelector((state: RootState) => state.reports.purchasedReportIds);
@@ -77,9 +78,14 @@ export function App() {
     setScreen('home');
   };
 
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      <StatusBar
+        barStyle={resolvedMode === 'light' ? 'dark-content' : 'light-content'}
+        backgroundColor={colors.background}
+      />
       {onboardingComplete ? (
         screen === 'home' ? (
           <HomeScreen
@@ -117,7 +123,12 @@ export function App() {
         ) : screen === 'report_read' && activeReport ? (
           <ReportReadScreen report={activeReport} onBack={() => setScreen('my_reports')} />
         ) : screen === 'settings' ? (
-          <SettingsScreen onOpenLegal={() => setScreen('legal')} onLogout={logout} />
+          <SettingsScreen
+            onOpenLegal={() => setScreen('legal')}
+            onLogout={logout}
+            themePreference={preference}
+            onChangeThemePreference={setPreference}
+          />
         ) : screen === 'legal' ? (
           <LegalScreen onBack={() => setScreen('settings')} />
         ) : (
@@ -136,15 +147,16 @@ export function App() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  buildLabel: {
-    textAlign: 'center',
-    fontSize: 11,
-    color: colors.textSecondary,
-    paddingBottom: 8,
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    buildLabel: {
+      textAlign: 'center',
+      fontSize: 11,
+      color: colors.textSecondary,
+      paddingBottom: 8,
+    },
+  });

@@ -1,9 +1,13 @@
-import React, {useState} from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {StyleSheet, Text, View} from 'react-native';
 
 import {ScreenState} from '../components/ScreenState';
+import {Button} from '../components/ui/Button';
+import {Card} from '../components/ui/Card';
+import {StateBanner} from '../components/ui/StateBanner';
 import {trackEvent} from '../features/analytics/analytics';
-import {colors} from '../theme/colors';
+import {useTheme} from '../theme/ThemeProvider';
+import {ThemePreference} from '../theme/tokens';
 
 type DeleteRequestStatus = 'idle' | 'success' | 'fail';
 type RequestStatus = 'idle' | 'loading' | 'error';
@@ -11,9 +15,27 @@ type RequestStatus = 'idle' | 'loading' | 'error';
 type Props = {
   onOpenLegal: () => void;
   onLogout: () => void;
+  themePreference: ThemePreference;
+  onChangeThemePreference: (next: ThemePreference) => Promise<void>;
 };
 
-export function SettingsScreen({onOpenLegal, onLogout}: Props) {
+const THEME_OPTIONS: ThemePreference[] = ['system', 'light', 'dark'];
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: 'Sistem',
+  light: 'Açık',
+  dark: 'Koyu',
+};
+
+export function SettingsScreen({
+  onOpenLegal,
+  onLogout,
+  themePreference,
+  onChangeThemePreference,
+}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [deleteStatus, setDeleteStatus] = useState<DeleteRequestStatus>('idle');
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('idle');
   const [attempt, setAttempt] = useState(0);
@@ -57,28 +79,42 @@ export function SettingsScreen({onOpenLegal, onLogout}: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Ayarlar</Text>
 
-      <View style={styles.card}>
+      <Card>
+        <Text style={styles.cardTitle}>Tema Modu</Text>
+        <View style={styles.optionRow}>
+          {THEME_OPTIONS.map(option => (
+            <Button
+              key={option}
+              label={THEME_LABELS[option]}
+              variant={themePreference === option ? 'primary' : 'secondary'}
+              style={styles.themeButton}
+              onPress={() => onChangeThemePreference(option)}
+            />
+          ))}
+        </View>
+      </Card>
+
+      <Card>
         <Text style={styles.cardTitle}>Profil Özeti</Text>
         <Text style={styles.cardText}>Demo Kullanıcı</Text>
         <Text style={styles.cardText}>demo@astroapp.local</Text>
         <Text style={styles.cardText}>Plan: Ücretsiz</Text>
-      </View>
+      </Card>
 
-      <View style={styles.card}>
+      <Card>
         <Text style={styles.cardTitle}>Bilgilendirme ve Onay</Text>
         <Text style={styles.cardText}>
           AstroApp’i kullanarak KVKK/Gizlilik/Koşullar metinlerini okuduğunu ve veri işleme
           bilgilendirmesini kabul ettiğini beyan edersin.
         </Text>
-      </View>
+      </Card>
 
-      <Pressable style={styles.secondaryButton} onPress={handleOpenLegal}>
-        <Text style={styles.secondaryButtonText}>Yasal Metinleri Gör</Text>
-      </Pressable>
-
-      <Pressable style={styles.warningButton} onPress={handleDeleteRequest}>
-        <Text style={styles.warningButtonText}>Hesap Silme Talebi Oluştur (Demo)</Text>
-      </Pressable>
+      <Button label="Yasal Metinleri Gör" variant="secondary" onPress={handleOpenLegal} />
+      <Button
+        label="Hesap Silme Talebi Oluştur (Demo)"
+        variant="dangerSoft"
+        onPress={handleDeleteRequest}
+      />
 
       {requestStatus === 'loading' ? (
         <ScreenState
@@ -101,85 +137,48 @@ export function SettingsScreen({onOpenLegal, onLogout}: Props) {
       ) : null}
 
       {deleteStatus === 'success' ? (
-        <Text style={styles.successText}>Talebin alındı. 24 saat içinde e-posta ile dönüş yapılır.</Text>
+        <StateBanner tone="success" description="Talebin alındı. 24 saat içinde e-posta ile dönüş yapılır." />
       ) : null}
 
       {deleteStatus === 'fail' ? (
-        <Text style={styles.errorText}>Talep şu an alınamadı. Lütfen tekrar dene.</Text>
+        <StateBanner tone="error" description="Talep şu an alınamadı. Lütfen tekrar dene." />
       ) : null}
 
-      <Pressable style={styles.primaryButton} onPress={handleLogout}>
-        <Text style={styles.primaryButtonText}>Çıkış Yap</Text>
-      </Pressable>
+      <Button label="Çıkış Yap" onPress={handleLogout} style={styles.logoutButton} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    gap: 12,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
-  },
-  cardTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  cardText: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  primaryButton: {
-    marginTop: 'auto',
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: colors.ctaPrimaryText,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: colors.ctaSecondaryText,
-    fontWeight: '700',
-  },
-  warningButton: {
-    backgroundColor: colors.stateErrorBg,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  warningButtonText: {
-    color: colors.error,
-    fontWeight: '700',
-  },
-  successText: {
-    color: colors.success,
-    fontWeight: '700',
-  },
-  errorText: {
-    color: colors.danger,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 20,
+      gap: 12,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontSize: 28,
+      fontWeight: '800',
+    },
+    cardTitle: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    cardText: {
+      color: colors.textSecondary,
+      lineHeight: 20,
+    },
+    optionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 4,
+    },
+    themeButton: {
+      flex: 1,
+    },
+    logoutButton: {
+      marginTop: 'auto',
+    },
+  });

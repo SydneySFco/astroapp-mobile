@@ -1,7 +1,9 @@
-import React from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import React, {useMemo} from 'react';
+import {StyleSheet, Text, View} from 'react-native';
 
-import {colors} from '../theme/colors';
+import {useTheme} from '../theme/ThemeProvider';
+import {Button} from './ui/Button';
+import {Card} from './ui/Card';
 
 type Mode = 'loading' | 'error' | 'empty';
 
@@ -14,8 +16,11 @@ type Props = {
 };
 
 export function ScreenState({mode, title, description, retryLabel = 'Tekrar Dene', onRetry}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
-    <View style={styles.container}>
+    <Card style={styles.container}>
       {mode === 'loading' ? (
         <View style={styles.skeletonWrap}>
           <View style={styles.skeletonLineLg} />
@@ -28,63 +33,48 @@ export function ScreenState({mode, title, description, retryLabel = 'Tekrar Dene
       <Text style={styles.description}>{description}</Text>
 
       {mode === 'error' && onRetry ? (
-        <Pressable style={styles.retryButton} onPress={onRetry}>
-          <Text style={styles.retryText}>{retryLabel}</Text>
-        </Pressable>
+        <Button label={retryLabel} variant="secondary" onPress={onRetry} style={styles.retryButton} />
       ) : null}
-    </View>
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  skeletonWrap: {
-    gap: 8,
-  },
-  skeletonLineLg: {
-    height: 14,
-    width: '92%',
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  skeletonLineMd: {
-    height: 14,
-    width: '72%',
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  skeletonLineSm: {
-    height: 14,
-    width: '56%',
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  description: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  retryButton: {
-    alignSelf: 'flex-start',
-    borderColor: colors.primary,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  retryText: {
-    color: colors.accent,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    container: {
+      gap: 10,
+    },
+    skeletonWrap: {
+      gap: 8,
+    },
+    skeletonLineLg: {
+      height: 14,
+      width: '92%',
+      borderRadius: 8,
+      backgroundColor: colors.border,
+    },
+    skeletonLineMd: {
+      height: 14,
+      width: '72%',
+      borderRadius: 8,
+      backgroundColor: colors.border,
+    },
+    skeletonLineSm: {
+      height: 14,
+      width: '56%',
+      borderRadius: 8,
+      backgroundColor: colors.border,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    description: {
+      color: colors.textSecondary,
+      lineHeight: 20,
+    },
+    retryButton: {
+      alignSelf: 'flex-start',
+    },
+  });
