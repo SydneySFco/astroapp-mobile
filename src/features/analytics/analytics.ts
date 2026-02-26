@@ -2,7 +2,9 @@ type AnalyticsEventName =
   | 'signup_start'
   | 'signup_complete'
   | 'onboarding_step_view'
-  | 'onboarding_complete';
+  | 'onboarding_complete'
+  | 'paywall_view'
+  | 'subscribe_success';
 
 type AnalyticsPayload = Record<string, string | number | boolean>;
 

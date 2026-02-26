@@ -1,19 +1,34 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
-import {useDispatch} from 'react-redux';
+import {useDispatch, useSelector} from 'react-redux';
 
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
+import {RootState} from '../store/store';
 import {colors} from '../theme/colors';
 
-export function HomeScreen() {
+type Props = {
+  onOpenPaywall: () => void;
+};
+
+export function HomeScreen({onOpenPaywall}: Props) {
   const dispatch = useDispatch();
+  const isPremium = useSelector((state: RootState) => state.subscription.isPremium);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Ana Sayfa</Text>
+      <Text style={styles.title}>{isPremium ? 'Premium Ana Sayfa' : 'Ana Sayfa'}</Text>
       <Text style={styles.description}>
         Günlük rehberliğine hoş geldin. Bugünkü küçük adımın seni bekliyor ✨
       </Text>
+
+      {!isPremium ? (
+        <Pressable style={styles.primaryButton} onPress={onOpenPaywall}>
+          <Text style={styles.primaryButtonText}>Premium’u Aç</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.premiumInfo}>Premium aktif: tüm premium içerikler açıldı.</Text>
+      )}
+
       <Pressable
         style={styles.secondaryButton}
         onPress={() => dispatch(setOnboardingComplete(false))}>
@@ -40,8 +55,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  secondaryButton: {
+  premiumInfo: {
+    color: colors.success,
+    fontWeight: '700',
+  },
+  primaryButton: {
     marginTop: 12,
+    backgroundColor: '#4A63F5',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
+  secondaryButton: {
     backgroundColor: '#2B355D',
     borderRadius: 10,
     paddingVertical: 12,
