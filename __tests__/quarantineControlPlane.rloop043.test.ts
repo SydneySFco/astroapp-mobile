@@ -4,8 +4,10 @@ import {
   dropQuarantinedHandler,
   getQuarantinedDetailHandler,
   listQuarantinedHandler,
+  mapActionErrorToMetricOutcome,
   redriveQuarantinedHandler,
 } from '../src/features/reliability/quarantineControlPlane';
+import {QuarantineAdminApiError} from '../src/features/reliability/quarantineAdminErrors';
 
 describe('RLOOP-043 quarantine control plane skeleton', () => {
   it('lists quarantined records for admin roles', async () => {
@@ -97,6 +99,9 @@ describe('RLOOP-043 quarantine control plane skeleton', () => {
     );
 
     expect(redrive.status).toBe(400);
+    if ('error' in redrive.data) {
+      expect(redrive.data.error.code).toBe('bad_request');
+    }
 
     const drop = await dropQuarantinedHandler(
       {
@@ -119,6 +124,77 @@ describe('RLOOP-043 quarantine control plane skeleton', () => {
     expect(drop.status).toBe(202);
     if ('status' in drop.data) {
       expect(drop.data.status).toBe('dropped');
+    }
+  });
+
+  it('maps stale/not_found/idempotent_duplicate repository errors to final HTTP status', async () => {
+    const stale = await redriveQuarantinedHandler(
+      {
+        params: {replayId: 'r-stale'},
+        body: {reason: 'manual', approvalRef: 'APR-1'},
+        context: {roles: ['admin_approver'], actorId: 'ops-1'},
+      },
+      {
+        repository: {
+          redrive: jest.fn(async () => {
+            throw new QuarantineAdminApiError({
+              code: 'stale',
+              status: 409,
+              message: 'stale',
+            });
+          }),
+          forceDrop: jest.fn(),
+        },
+      },
+    );
+
+    expect(stale.status).toBe(409);
+
+    const notFound = await dropQuarantinedHandler(
+      {
+        params: {replayId: 'r-missing'},
+        body: {reason: 'manual', approvalRef: 'APR-2'},
+        context: {roles: ['admin_approver'], actorId: 'ops-1'},
+      },
+      {
+        repository: {
+          redrive: jest.fn(),
+          forceDrop: jest.fn(async () => {
+            throw new QuarantineAdminApiError({
+              code: 'not_found',
+              status: 404,
+              message: 'missing',
+            });
+          }),
+        },
+      },
+    );
+
+    expect(notFound.status).toBe(404);
+
+    const dedup = await redriveQuarantinedHandler(
+      {
+        params: {replayId: 'r-dupe'},
+        body: {reason: 'manual', approvalRef: 'APR-3', requestId: 'idem-1'},
+        context: {roles: ['admin_approver'], actorId: 'ops-1'},
+      },
+      {
+        repository: {
+          redrive: jest.fn(async () => {
+            throw new QuarantineAdminApiError({
+              code: 'idempotent_duplicate',
+              status: 409,
+              message: 'duplicate',
+            });
+          }),
+          forceDrop: jest.fn(),
+        },
+      },
+    );
+
+    expect(dedup.status).toBe(409);
+    if ('error' in dedup.data) {
+      expect(dedup.data.error.code).toBe('idempotent_duplicate');
     }
   });
 
@@ -150,5 +226,11 @@ describe('RLOOP-043 quarantine control plane skeleton', () => {
       reason: 'approved_by_oncall',
     });
     expect(metric.requestId).toBe('req-1');
+  });
+
+  it('maps error code to observability outcomes', () => {
+    expect(mapActionErrorToMetricOutcome('idempotent_duplicate')).toBe('deduped');
+    expect(mapActionErrorToMetricOutcome('stale')).toBe('stale_conflict');
+    expect(mapActionErrorToMetricOutcome('unauthorized')).toBe('rejected');
   });
 });

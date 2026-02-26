@@ -120,6 +120,11 @@ export const routeQuarantineAdminRequest = async (
 
   return {
     status: 404,
-    data: {error: 'Route not found'},
+    data: {
+      error: {
+        code: 'not_found',
+        message: 'Route not found',
+      },
+    },
   };
 };

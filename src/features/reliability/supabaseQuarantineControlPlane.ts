@@ -1,6 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 
 import {supabase} from '../../services/supabase/client';
+import {QuarantineAdminApiError} from './quarantineAdminErrors';
 import type {
   QuarantineActionResult,
   QuarantineAdminRepository,
@@ -101,7 +102,31 @@ const ensurePendingReviewTransition = async (
   }
 
   if (!data) {
-    throw new Error('quarantine_stale_or_not_found');
+    const {data: existing, error: existingError} = await client
+      .from(QUARANTINE_TABLE)
+      .select('replay_id,status')
+      .eq('replay_id', replayId)
+      .maybeSingle<{replay_id: string; status: string}>();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    if (!existing) {
+      throw new QuarantineAdminApiError({
+        code: 'not_found',
+        status: 404,
+        message: 'Quarantine record not found',
+        details: {replayId},
+      });
+    }
+
+    throw new QuarantineAdminApiError({
+      code: 'stale',
+      status: 409,
+      message: 'Quarantine state is stale for requested transition',
+      details: {replayId, currentStatus: existing.status, expectedStatus: 'pending_review'},
+    });
   }
 };
 
@@ -172,6 +197,28 @@ const dedupeActionByRequestId = async (
     status,
     processedAt,
   };
+};
+
+/**
+ * Draft conflict-safe insert strategy for requestId dedup (DB-first):
+ * - Insert audit row with unique constraint `(replay_id, action, request_id)`
+ * - `on conflict do nothing` + returning clause
+ * - If no row returned, read latest matching row and surface as idempotent_duplicate (409)
+ *
+ * Current adapter still does read-first dedupe for broad compatibility,
+ * but below helper documents an upsert-compatible binding shape for runtime adoption.
+ */
+export type QuarantineAuditConflictBindings = {
+  insertActionAuditOnce: (input: {
+    replayId: string;
+    action: 'manual_redrive_requested' | 'force_drop_requested';
+    actorId: string;
+    reason: string;
+    approvalRef: string;
+    requestId: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+  }) => Promise<{inserted: boolean}>;
 };
 
 export const createSupabaseQuarantineControlPlaneReadModel = (
@@ -253,7 +300,17 @@ const processAction = async (
   });
 
   if (deduped) {
-    return deduped;
+    throw new QuarantineAdminApiError({
+      code: 'idempotent_duplicate',
+      status: 409,
+      message: 'Idempotent request already processed',
+      details: {
+        replayId: deduped.replayId,
+        status: deduped.status,
+        processedAt: deduped.processedAt,
+        requestId: input.audit.requestId,
+      },
+    });
   }
 
   const status = input.action === 'manual_redrive_requested' ? 'redriven' : 'dropped';
