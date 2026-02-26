@@ -30,6 +30,22 @@ src/
 
 ```bash
 yarn install
+cp .env.example .env
+```
+
+### Supabase Backend Setup (RLOOP-012)
+
+1. Supabase projesi oluştur.
+2. `.env` dosyasında aşağıdaki değerleri doldur:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+3. Auth akışı varsayılan olarak Supabase adaptörünü kullanır.
+   - Env değerleri yoksa mevcut REST auth endpoint fallback'i devreye girer.
+
+```bash
+# Validation
+npm run lint
+npx tsc --noEmit
 ```
 
 ## Çalıştırma

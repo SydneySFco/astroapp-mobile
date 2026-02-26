@@ -2,6 +2,7 @@
 
 ## Scope
 Mock akışlardan gerçek backend entegrasyonuna geçiş için başlangıç iskeleti.
+RLOOP-012 ile backend standardı **Supabase-first** olarak güncellendi.
 
 ## 1) API Config & Environment Strategy
 - [x] `src/config/apiConfig.ts` eklendi.
@@ -10,28 +11,33 @@ Mock akışlardan gerçek backend entegrasyonuna geçiş için başlangıç iske
 - [x] Timeout (`timeoutMs`) merkezi konfigürasyona taşındı.
 - [x] Default header seti tanımlandı (`Accept`, `Content-Type`, app version/build header'ları).
 - [x] Runtime base URL override hook'u bırakıldı (`setApiRuntimeBaseUrl`).
-- [ ] CI/CD env injection ile production/staging URL’lerinin gerçek domainlerle doldurulması.
+- [x] Supabase env placeholder stratejisi eklendi (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `.env.example`).
+- [ ] CI/CD env injection ile staging/production Supabase project değerlerinin güvenli dağıtımı.
 
-## 2) Auth Lifecycle Skeleton
+## 2) Auth Lifecycle Skeleton (Supabase Adaptör Geçişi)
 - [x] Login/Register/ForgotPassword request type’ları netleştirildi (`authTypes.ts`).
-- [x] Login/Register response typing backend-ready hale getirildi (`user + tokens`).
 - [x] Token storage abstraction eklendi (`tokenStorage.ts`, secure storage placeholder).
-- [x] Login/Register başarılı olursa token persistence akışı tanımlandı (`onQueryStarted`).
-- [x] Logout mutation eklendi.
-- [x] Logout invalidation flow merkezi fonksiyonla tanımlandı (`runLogoutFlow`).
+- [x] Supabase auth wrapper katmanı eklendi (`src/services/supabase/auth.ts`):
+  - [x] `signIn`
+  - [x] `signUp`
+  - [x] `forgotPassword`
+  - [x] `logout`
+- [x] Mevcut `authApi` katmanı Supabase adaptörüne bağlandı (fallback: mevcut REST endpoint'leri).
+- [x] Login/Register başarılı olursa token persistence akışı korunuyor (`onQueryStarted`).
 - [ ] In-memory token store yerine Keychain/Keystore tabanlı güvenli storage bağlanması.
+- [ ] Supabase refresh token lifecycle + background restore testleri.
 
-## 3) Reports Backend Contract Stubs
-- [x] `reportsApi.ts` eklendi.
-- [x] Catalog contract type’ları eklendi (`ReportCatalogItem`, `ReportCatalogResponse`).
-- [x] Detail contract type’ları eklendi (`ReportDetail`).
-- [x] Purchased reports contract type’ları eklendi (`PurchasedReport`, `PurchasedReportsResponse`).
+## 3) Reports & Profile Contract Notes (Supabase Perspektifi)
+- [x] Reports contract'ı Supabase tablo/RPC yaklaşımına göre dokümante edildi (`docs/SUPABASE_BACKEND_PLAN.md`).
+- [x] Profile contract'ı `profiles` tablosu + `auth.users` ilişkisi üzerinden tanımlandı.
+- [x] MVP için RLS yaklaşımı dokümante edildi (anon vs authenticated erişim sınırları).
+- [ ] Final SQL migration dosyalarının hazırlanması ve Supabase üzerinde uygulanması.
 
 ## 4) RTK Query Backend-Ready Endpoints
 - [x] `axiosBaseQuery` merkezi API config + auth header kullanımına geçirildi.
 - [x] `healthApi` hardcoded URL’den çıkarılıp merkezi base query’e geçirildi.
 - [x] `reportsApi` store’a reducer + middleware olarak bağlandı.
-- [x] Mock fallback notları endpoint seviyesinde dokümante edildi.
+- [x] Auth endpoints Supabase-first davranışa taşındı (safe transition ile).
 - [ ] UI data source'unun `reportsSlice` mock state'ten `reportsApi` query cache'e kademeli taşınması.
 
 ## 5) PM Palette Rule (Critical)
@@ -42,8 +48,8 @@ Mock akışlardan gerçek backend entegrasyonuna geçiş için başlangıç iske
 - [ ] `npm run lint`
 - [ ] `npx tsc --noEmit`
 
-## Follow-up for RLOOP-010
-1. PM color token uygulaması + UI alignment (authoritative palette ile).
-2. Auth secure storage gerçek implementasyonu.
-3. Reports ekranlarının API-first veri modeline taşınması (mock fallback kaldırma planı ile).
+## Next Actions
+1. Supabase SQL migrations (`profiles`, `reports_catalog`, `user_reports`, `report_orders`) + seed.
+2. Reports querylerini Supabase client üzerinden gerçek sorgulara taşıma.
+3. Auth secure storage gerçek implementasyonu.
 4. Backend error mapping + retry policy standardizasyonu.
