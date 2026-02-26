@@ -43,6 +43,7 @@ LOCK_TELEMETRY_FILE="${LOCK_TELEMETRY_FILE:-}"
 LATENCY_SPIKE_THRESHOLD_MS="${LATENCY_SPIKE_THRESHOLD_MS:-500}"
 CONTENTION_WINDOW_SEC="${CONTENTION_WINDOW_SEC:-5}"
 CONFIDENCE_CALIBRATION_FILE="${CONFIDENCE_CALIBRATION_FILE:-reports/confidence-calibration.json}"
+CALIBRATION_METHOD="${CALIBRATION_METHOD:-affine}"
 
 # Optional live collector integration (RLOOP-034)
 LOCK_TELEMETRY_LIVE_COLLECT="${LOCK_TELEMETRY_LIVE_COLLECT:-0}"
@@ -470,7 +471,7 @@ while (( i <= ITERATIONS )); do
   i=$((i + 1))
 done
 
-METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKER_FAN_OUT" "$JOB_POOL_SIZE" "$LATENCY_SPIKE_THRESHOLD_MS" "$CONTENTION_WINDOW_SEC" "$LOCK_TELEMETRY_FILE" "$CONFIDENCE_CALIBRATION_FILE"
+METRICS_JSON="$(python3 - <<'PY' "$ATTEMPTS_FILE" "$ITERATIONS" "$WORKER_FAN_OUT" "$JOB_POOL_SIZE" "$LATENCY_SPIKE_THRESHOLD_MS" "$CONTENTION_WINDOW_SEC" "$LOCK_TELEMETRY_FILE" "$CONFIDENCE_CALIBRATION_FILE" "$CALIBRATION_METHOD"
 import json, statistics, sys, datetime
 from collections import defaultdict
 
@@ -482,6 +483,7 @@ lat_spike=float(sys.argv[5])
 window_sec=int(sys.argv[6])
 lock_file=sys.argv[7]
 calibration_file=sys.argv[8]
+calibration_method=str(sys.argv[9]).strip().lower()
 
 rows=[]
 with open(path,"r",encoding="utf-8") as f:
@@ -626,6 +628,8 @@ blocking_graph_samples=0
 blocking_graph_edge_count=0
 blocking_graph_max_edges_per_sample=0
 blocking_graph_max_blockers_per_blocked=0
+blocker_fingerprint_counts=defaultdict(int)
+blocker_fingerprint_meta={}
 
 for t in telemetry_rows:
     ts=int(t.get("timestamp_unix",0))
@@ -635,6 +639,15 @@ for t in telemetry_rows:
     g=t.get("blocking_graph_summary") or {}
     edge_count=int(g.get("edge_count",0) or 0)
     max_blockers=int(g.get("max_blockers_per_blocked",0) or 0)
+    fp=t.get("top_blocker_fingerprint") or {}
+    fp_hash=(fp.get("query_fingerprint_hash") if isinstance(fp,dict) else None) or None
+    if fp_hash:
+        blocker_fingerprint_counts[fp_hash]+=1
+        if fp_hash not in blocker_fingerprint_meta:
+            blocker_fingerprint_meta[fp_hash]={
+              "query_family": fp.get("query_family") or None,
+              "redaction": fp.get("redaction") or "hash-only-no-raw-query"
+            }
 
     if edge_count > 0:
         blocking_graph_samples += 1
@@ -655,6 +668,17 @@ for t in telemetry_rows:
             },
             "sample_source": t.get("sample_source","pg_locks+pg_stat_activity+pg_blocking_pids")
         })
+
+top_blocker_fingerprint=None
+if blocker_fingerprint_counts:
+    fp_hash, fp_count = max(blocker_fingerprint_counts.items(), key=lambda kv: (kv[1], kv[0]))
+    top_blocker_fingerprint={
+      "query_fingerprint_hash": fp_hash,
+      "sample_hits": fp_count,
+      "sample_share": round(fp_count/max(len(telemetry_rows),1),4),
+      "query_family": blocker_fingerprint_meta.get(fp_hash,{}).get("query_family"),
+      "redaction": blocker_fingerprint_meta.get(fp_hash,{}).get("redaction","hash-only-no-raw-query")
+    }
 
 spikes_correlated=0
 for sp in latency_spikes:
@@ -714,36 +738,100 @@ class_confidence={
 
 calibration_meta={
   "enabled": False,
+  "method": calibration_method,
   "file": calibration_file,
   "loaded": False,
+  "safe_parse": True,
   "notes": "fallback to baseline weights"
 }
 
+
+def safe_float(v, default=0.0):
+    try:
+        if isinstance(v, bool):
+            return default
+        return float(v)
+    except Exception:
+        return default
+
+
+def apply_affine_score(score, cfg):
+    scale=safe_float((cfg or {}).get("scale",1.0), 1.0)
+    shift=safe_float((cfg or {}).get("shift",0.0), 0.0)
+    return clamp((score * scale) + shift), {"scale": round(scale,4), "shift": round(shift,4)}
+
+
+def apply_logistic_score(score, cfg):
+    params=(cfg or {}).get("params",{}) if isinstance(cfg,dict) else {}
+    a=safe_float(params.get("a",1.0),1.0)
+    b=safe_float(params.get("b",0.0),0.0)
+    z=(a*score)+b
+    if z >= 0:
+        ez=pow(2.718281828459045, -z)
+        out=1.0/(1.0+ez)
+    else:
+        ez=pow(2.718281828459045, z)
+        out=ez/(1.0+ez)
+    return clamp(out), {"a": round(a,6), "b": round(b,6)}
+
+
+def apply_isotonic_score(score, cfg):
+    bins=(cfg or {}).get("bins",[]) if isinstance(cfg,dict) else []
+    if not isinstance(bins, list) or not bins:
+        return score, {"bins_used": 0}
+    s=clamp(score)
+    chosen=None
+    for b in bins:
+        if not isinstance(b,dict):
+            continue
+        left=clamp(safe_float(b.get("left",0.0),0.0))
+        right=clamp(safe_float(b.get("right",1.0),1.0))
+        if left <= s <= right:
+            chosen=b
+            break
+    if chosen is None:
+        chosen=bins[0] if s <= clamp(safe_float((bins[0] or {}).get("left",0.0),0.0)) else bins[-1]
+    value=clamp(safe_float((chosen or {}).get("value",score), score)) if isinstance(chosen,dict) else score
+    return value, {"bins_used": len(bins)}
+
+
 calibrated_confidence={k: dict(v) for k,v in class_confidence.items()}
-try:
-    with open(calibration_file, "r", encoding="utf-8") as cf:
-        params=json.load(cf)
-    calibration_meta["enabled"]=True
-    calibration_meta["loaded"]=True
-    calibration_meta["version"]=params.get("version","v1")
-    calibration_meta["history_runs_used"]=int(params.get("history_runs_used",0))
-    per_class=params.get("per_class",{}) if isinstance(params,dict) else {}
-    for cls, base in class_confidence.items():
-        cfg=per_class.get(cls,{}) if isinstance(per_class,dict) else {}
-        scale=float(cfg.get("scale",1.0))
-        shift=float(cfg.get("shift",0.0))
-        score=clamp((float(base["score"]) * scale) + shift)
-        calibrated_confidence[cls]={
-          "score": round(score,4),
-          "band": band(score),
-          "signals": base.get("signals",{}),
-          "calibration": {
-            "scale": round(scale,4),
-            "shift": round(shift,4)
-          }
-        }
-except Exception:
-    pass
+if calibration_method != "none":
+    try:
+        with open(calibration_file, "r", encoding="utf-8") as cf:
+            params=json.load(cf)
+        if isinstance(params, dict):
+            calibration_meta["enabled"]=True
+            calibration_meta["loaded"]=True
+            calibration_meta["version"]=params.get("version","v1")
+            calibration_meta["method"]=(params.get("method") or calibration_method or "affine").strip().lower()
+            calibration_meta["history_runs_used"]=int(safe_float(params.get("history_runs_used",0),0))
+            per_class=params.get("per_class",{}) if isinstance(params.get("per_class",{}),dict) else {}
+            method=calibration_meta["method"]
+            for cls, base in class_confidence.items():
+                base_score=clamp(safe_float(base.get("score",0.0),0.0))
+                cfg=per_class.get(cls,{}) if isinstance(per_class,dict) else {}
+                detail={}
+                if method in ("groundtruth", "isotonic", "logistic"):
+                    ctype=(cfg.get("type") if isinstance(cfg,dict) else None) or method
+                    ctype=str(ctype).strip().lower()
+                    if ctype == "logistic":
+                        score,detail=apply_logistic_score(base_score, cfg)
+                    elif ctype == "isotonic":
+                        score,detail=apply_isotonic_score(base_score, cfg)
+                    else:
+                        score,detail=base_score,{"passthrough": True}
+                else:
+                    score,detail=apply_affine_score(base_score, cfg if isinstance(cfg,dict) else {})
+                calibrated_confidence[cls]={
+                  "score": round(score,4),
+                  "band": band(score),
+                  "signals": base.get("signals",{}),
+                  "calibration": detail
+                }
+    except Exception as e:
+        calibration_meta["loaded"]=False
+        calibration_meta["error"]=str(e)
 
 baseline_dominant_class=max(class_confidence.items(), key=lambda kv: kv[1]["score"])[0]
 dominant_class=max(calibrated_confidence.items(), key=lambda kv: kv[1]["score"])[0]
@@ -761,7 +849,8 @@ contention_correlation={
     "edge_count_total": blocking_graph_edge_count,
     "max_edges_per_sample": blocking_graph_max_edges_per_sample,
     "max_blockers_per_blocked": blocking_graph_max_blockers_per_blocked,
-    "edge_density": round(blocking_graph_density,4)
+    "edge_density": round(blocking_graph_density,4),
+    "top_blocker_fingerprint": top_blocker_fingerprint
   },
   "confidence": {
     "contention_class_confidence": calibrated_confidence,
@@ -772,6 +861,7 @@ contention_correlation={
     "dominant_confidence_score": calibrated_confidence[dominant_class]["score"],
     "dominant_confidence_band": calibrated_confidence[dominant_class]["band"],
     "calibration": calibration_meta,
+    "top_blocker_fingerprint": top_blocker_fingerprint,
     "db_lock_accuracy_notes": {
       "heuristic": "db-lock confidence rises with lock-class ratio + latency/contention correlation + telemetry coverage",
       "known_limitations": [
