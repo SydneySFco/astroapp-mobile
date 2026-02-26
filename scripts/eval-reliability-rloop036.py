@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 import argparse
-import datetime as dt
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 def load_rows(path: Path) -> List[dict]:
@@ -51,57 +50,22 @@ def reliability_for_class(rows: List[dict], cls: str, bins: int) -> Dict[str, ob
     return {"ece": round(ece, 6), "curve": curve}
 
 
-def parse_ts(value: object) -> Optional[dt.datetime]:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        try:
-            return dt.datetime.fromtimestamp(float(value), tz=dt.timezone.utc)
-        except Exception:
-            return None
-    s = str(value).strip()
-    if not s:
-        return None
-    try:
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        return dt.datetime.fromisoformat(s).astimezone(dt.timezone.utc)
-    except Exception:
-        return None
-
-
-def slice_label(row: dict, time_field: str, slice_by: str) -> Optional[str]:
-    ts = parse_ts(row.get(time_field))
-    if ts is None:
-        return None
-    if slice_by == "day":
-        return ts.strftime("%Y-%m-%d")
-    if slice_by == "week":
-        iso = ts.isocalendar()
-        return f"{iso.year}-W{iso.week:02d}"
-    return ts.strftime("%Y-%m")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True, help="labelled incidents JSONL")
     ap.add_argument("--bins", type=int, default=10)
     ap.add_argument("--out", default="reports/reliability-eval-rloop036.json")
-    ap.add_argument("--time-field", default="timestamp", help="row field used for timesliced trend")
-    ap.add_argument("--slice-by", choices=["day", "week", "month"], default="day")
     args = ap.parse_args()
 
     rows = load_rows(Path(args.input))
     classes = sorted({str(r.get("actual_class")) for r in rows} | {k for r in rows for k in (r.get("scores") or {}).keys()})
 
     out = {
-        "version": "rloop-037-v1",
+        "version": "rloop-036-v1",
         "input": args.input,
         "incidents": len(rows),
         "bins": args.bins,
         "classwise": {},
-        "timeslice": {"field": args.time_field, "slice_by": args.slice_by},
-        "classwise_ece_trend": {},
     }
 
     macro = 0.0
@@ -111,21 +75,6 @@ def main() -> int:
         macro += v["ece"]
 
     out["macro_ece"] = round(macro / max(1, len(classes)), 6)
-
-    buckets: Dict[str, List[dict]] = {}
-    for r in rows:
-        label = slice_label(r, args.time_field, args.slice_by)
-        if label is None:
-            continue
-        buckets.setdefault(label, []).append(r)
-
-    for cls in classes:
-        trend = []
-        for label in sorted(buckets.keys()):
-            slice_rows = buckets[label]
-            ece = reliability_for_class(slice_rows, cls, args.bins)["ece"]
-            trend.append({"slice": label, "ece": ece, "count": len(slice_rows)})
-        out["classwise_ece_trend"][cls] = trend
 
     p = Path(args.out)
     p.parent.mkdir(parents=True, exist_ok=True)

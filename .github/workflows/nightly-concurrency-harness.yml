@@ -49,7 +49,47 @@ jobs:
           name: concurrency-harness-report
           path: reports/concurrency-harness-*.json
 
-      - name: Secret requirements (documentation)
+      - name: Notify webhook (optional)
+        if: always() && secrets.CONCURRENCY_HARNESS_WEBHOOK_URL != ''
+        env:
+          CONCURRENCY_HARNESS_WEBHOOK_URL: ${{ secrets.CONCURRENCY_HARNESS_WEBHOOK_URL }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          latest_report="$(ls -1t reports/concurrency-harness-*.json 2>/dev/null | head -n 1)"
+          if [ -z "$latest_report" ]; then
+            payload='{"text":"[concurrency-harness] no report generated","run_url":"'"$GITHUB_RUN_URL"'"}'
+          else
+            payload="$(python3 - <<'PY' "$latest_report" "$GITHUB_RUN_URL"
+import json,sys
+report_path,run_url=sys.argv[1],sys.argv[2]
+with open(report_path,'r',encoding='utf-8') as f:
+    r=json.load(f)
+outcomes=r.get('outcomes',{})
+ratios=r.get('ratios',{})
+assertions=r.get('assertions',{})
+conf=r.get('contention_confidence',{})
+dom=conf.get('dominant_contention_class')
+dom_score=conf.get('dominant_confidence_score')
+top_fp=(conf.get('top_blocker_fingerprint') or {}).get('query_fingerprint_hash')
+if isinstance(top_fp,str) and len(top_fp) > 12:
+    top_fp=f"{top_fp[:12]}…"
+text=(
+    f"[concurrency-harness] status={assertions.get('job_status')} "
+    f"applied={outcomes.get('applied')} idempotent={outcomes.get('idempotent')} "
+    f"stale={outcomes.get('stale_blocked')} unknown={outcomes.get('unknown')} "
+    f"stale_ratio={ratios.get('stale_conflict_ratio')} "
+    f"dominant={dom}@{dom_score} top_blocker_fp={top_fp}"
+)
+print(json.dumps({'text': text, 'run_url': run_url}))
+PY
+)"
+          fi
+
+          curl -sS -X POST "$CONCURRENCY_HARNESS_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "$payload" >/dev/null
+
+      - name: Secret requirements
         if: always()
         run: |
           echo "Required secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY"
