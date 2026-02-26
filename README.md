@@ -33,6 +33,12 @@ yarn install
 cp .env.example .env
 ```
 
+## Package Manager Standardı
+
+- Standart paket yöneticisi: **Yarn (classic)**
+- Bu repo için `packageManager` alanı `yarn@1.22.22` olarak sabitlenmiştir.
+- Lockfile politikası: yalnızca `yarn.lock` versiyonlanır.
+
 ### Supabase Backend Setup (RLOOP-012)
 
 1. Supabase projesi oluştur.
@@ -44,8 +50,8 @@ cp .env.example .env
 
 ```bash
 # Validation
-npm run lint
-npx tsc --noEmit
+yarn lint
+yarn typecheck
 ```
 
 ## Çalıştırma

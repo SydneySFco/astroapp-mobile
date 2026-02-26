@@ -6,6 +6,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "start": "react-native start",
     "test": "jest"
   },
@@ -41,5 +42,6 @@
   },
   "engines": {
     "node": ">= 22.11.0"
-  }
+  },
+  "packageManager": "yarn@1.22.22"
 }
