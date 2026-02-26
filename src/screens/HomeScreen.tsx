@@ -1,5 +1,5 @@
 import React from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
 
 import {setOnboardingComplete} from '../features/onboarding/onboardingSlice';
@@ -24,67 +24,104 @@ export function HomeScreen({
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Daily Dashboard</Text>
-        <Pressable style={styles.headerButton} onPress={onOpenSettings}>
-          <Text style={styles.headerButtonIcon}>☰</Text>
+        <Pressable style={styles.headerIconButton} onPress={onOpenSettings}>
+          <Text style={styles.headerIcon}>☰</Text>
         </Pressable>
-      </View>
 
-      <View style={styles.dateBlock}>
-        <Text style={styles.dateTitle}>October 24</Text>
-        <Text style={styles.dateSubtitle}>Wednesday, 2023</Text>
-      </View>
-
-      <View style={styles.heroCard}>
-        <Text style={styles.heroBadge}>HOROSCOPE</Text>
-        <Text style={styles.heroTitle}>The Moon Enters Pisces</Text>
-        <Text style={styles.heroDescription}>
-          A wave of intuition washes over you today. Trust your gut feelings in professional matters.
-        </Text>
-
-        <Pressable style={styles.heroButton} onPress={onOpenReportsMarketplace}>
-          <Text style={styles.heroButtonText}>Read Full Insight →</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.grid}>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricTag}>PHASE</Text>
-          <Text style={styles.metricTitle}>Waxing Gibbous</Text>
-          <Text style={styles.metricValue}>82% Illumination</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerLabel}>Daily Dashboard</Text>
+          <Text style={styles.headerTitle}>Today's Energy</Text>
         </View>
 
-        <View style={styles.metricCard}>
-          <Text style={styles.metricTag}>CRYSTAL</Text>
-          <Text style={styles.metricTitle}>Amethyst</Text>
-          <Text style={styles.metricSub}>For clarity and peaceful energy today.</Text>
+        <View style={styles.headerIconButton}>
+          <Text style={styles.headerIcon}>◷</Text>
         </View>
       </View>
 
-      <View style={styles.tipCard}>
-        <Text style={styles.tipTitle}>Daily Tip</Text>
-        <Text style={styles.tipBody}>
-          Mercury is in retrograde. Double-check your emails before hitting send.
-        </Text>
-      </View>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.dateBlock}>
+          <Text style={styles.dateTitle}>October 24</Text>
+          <Text style={styles.dateSubtitle}>Wednesday, 2023</Text>
+        </View>
 
-      <Pressable style={styles.navButton} onPress={onOpenMyReports}>
-        <Text style={styles.navButtonText}>Reports Library</Text>
-      </Pressable>
+        <View style={styles.heroCard}>
+          <View style={styles.heroImageArea}>
+            <View style={styles.heroImageGlow} />
+            <Text style={styles.heroBadge}>HOROSCOPE</Text>
+            <Text style={styles.heroTitle}>The Moon Enters Pisces</Text>
+          </View>
 
-      {!isPremium ? (
-        <Pressable style={styles.primaryButton} onPress={onOpenPaywall}>
-          <Text style={styles.primaryButtonText}>Unlock Premium</Text>
+          <View style={styles.heroBody}>
+            <Text style={styles.heroDescription}>
+              A wave of intuition washes over you today. Trust your gut feelings in professional matters,
+              as logical analysis might miss subtle cues.
+            </Text>
+
+            <Pressable style={styles.heroButton} onPress={onOpenReportsMarketplace}>
+              <Text style={styles.heroButtonText}>Read Full Insight</Text>
+              <Text style={styles.heroButtonArrow}>→</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.grid}>
+          <View style={styles.metricCard}>
+            <View style={styles.metricTopRow}>
+              <Text style={styles.metricSymbol}>◔</Text>
+              <Text style={styles.metricTag}>PHASE</Text>
+            </View>
+            <Text style={styles.metricTitle}>Waxing Gibbous</Text>
+            <Text style={styles.metricValue}>82% Illumination</Text>
+          </View>
+
+          <View style={styles.metricCard}>
+            <View style={styles.metricTopRow}>
+              <Text style={styles.metricSymbol}>◈</Text>
+              <Text style={styles.metricTag}>CRYSTAL</Text>
+            </View>
+            <Text style={styles.metricTitle}>Amethyst</Text>
+            <Text style={styles.metricSub}>For clarity and peaceful energy today.</Text>
+          </View>
+        </View>
+
+        <View style={styles.tipCard}>
+          <View style={styles.tipIconWrap}>
+            <Text style={styles.tipIcon}>✦</Text>
+          </View>
+          <View style={styles.tipTextWrap}>
+            <Text style={styles.tipTitle}>Daily Tip</Text>
+            <Text style={styles.tipBody}>
+              Mercury is in retrograde. Double-check your emails before hitting send to avoid
+              misunderstandings.
+            </Text>
+          </View>
+        </View>
+
+        <Pressable style={styles.navButton} onPress={onOpenMyReports}>
+          <Text style={styles.navButtonText}>Reports Library</Text>
         </Pressable>
-      ) : (
-        <Text style={styles.premiumInfo}>Premium active: all premium insights unlocked.</Text>
-      )}
 
-      <Pressable
-        style={styles.resetButton}
-        onPress={() => dispatch(setOnboardingComplete(false))}>
-        <Text style={styles.resetButtonText}>Demo için onboarding'e dön</Text>
-      </Pressable>
+        {!isPremium ? (
+          <Pressable style={styles.primaryButton} onPress={onOpenPaywall}>
+            <Text style={styles.primaryButtonText}>Unlock Premium</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.premiumInfo}>Premium active: all premium insights unlocked.</Text>
+        )}
+
+        <Pressable
+          style={styles.resetButton}
+          onPress={() => dispatch(setOnboardingComplete(false))}>
+          <Text style={styles.resetButtonText}>Demo için onboarding'e dön</Text>
+        </Pressable>
+
+        <View style={styles.bottomNav}>
+          <Text style={styles.bottomNavActive}>Home</Text>
+          <Text style={styles.bottomNavItem}>Reports</Text>
+          <Text style={styles.bottomNavItem}>Tribes</Text>
+          <Text style={styles.bottomNavItem}>Settings</Text>
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -93,34 +130,54 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#191022',
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    gap: 12,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A2234',
+    backgroundColor: 'rgba(25,16,34,0.98)',
+  },
+  headerCenter: {
+    alignItems: 'center',
+    gap: 1,
   },
   headerLabel: {
     color: '#8C2BEE',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  headerButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  headerIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#231B2E',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerButtonIcon: {
-    color: '#B9A3D8',
-    fontSize: 14,
+  headerIcon: {
+    color: '#B8A4D6',
+    fontSize: 16,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 22,
+    gap: 14,
   },
   dateBlock: {
     alignItems: 'center',
@@ -139,48 +196,71 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   heroCard: {
-    borderRadius: 14,
+    borderRadius: 12,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#322840',
     backgroundColor: '#231B2E',
-    padding: 16,
-    gap: 8,
     shadowColor: '#000000',
-    shadowOffset: {width: 0, height: 6},
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 6,
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  heroImageArea: {
+    minHeight: 148,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    justifyContent: 'flex-end',
+    backgroundColor: '#312449',
+  },
+  heroImageGlow: {
+    position: 'absolute',
+    top: -10,
+    left: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(140,43,238,0.24)',
   },
   heroBadge: {
     alignSelf: 'flex-start',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    overflow: 'hidden',
     backgroundColor: '#8C2BEE',
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
+    marginBottom: 6,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: '800',
   },
+  heroBody: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    gap: 10,
+  },
   heroDescription: {
-    color: '#C5BCD3',
+    color: '#C8BED7',
     fontSize: 13,
     lineHeight: 20,
   },
   heroButton: {
-    marginTop: 4,
     minHeight: 44,
     borderRadius: 10,
     backgroundColor: '#8C2BEE',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
     shadowColor: '#8C2BEE',
     shadowOffset: {width: 0, height: 6},
     shadowOpacity: 0.3,
@@ -192,20 +272,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  heroButtonArrow: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    marginTop: -1,
+  },
   grid: {
     flexDirection: 'row',
     gap: 10,
   },
   metricCard: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#31283F',
     backgroundColor: '#231B2E',
-    minHeight: 120,
+    minHeight: 128,
     padding: 12,
     justifyContent: 'flex-end',
     gap: 4,
+  },
+  metricTopRow: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  metricSymbol: {
+    color: '#8C2BEE',
+    fontSize: 15,
   },
   metricTag: {
     color: '#80718F',
@@ -230,17 +328,36 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   tipCard: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#513868',
-    backgroundColor: 'rgba(140,43,238,0.12)',
+    borderColor: 'rgba(140,43,238,0.24)',
+    backgroundColor: 'rgba(140,43,238,0.10)',
     padding: 14,
-    gap: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  tipIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(140,43,238,0.24)',
+    marginTop: 2,
+  },
+  tipIcon: {
+    color: '#B47AF7',
+    fontSize: 14,
+  },
+  tipTextWrap: {
+    flex: 1,
   },
   tipTitle: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+    marginBottom: 2,
   },
   tipBody: {
     color: '#B9A7CD',
@@ -286,6 +403,25 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: '#8D7CFF',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  bottomNav: {
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#2E253A',
+    paddingTop: 10,
+    paddingBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  bottomNavActive: {
+    color: '#8C2BEE',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bottomNavItem: {
+    color: '#7F7394',
+    fontSize: 11,
     fontWeight: '600',
   },
 });

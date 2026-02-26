@@ -112,3 +112,51 @@ References used:
 
 ## Notes
 Changes were constrained to parity-only styling/layout updates in in-file `StyleSheet` rules and existing screen components.
+
+---
+
+## Iteration-2 (Design Fidelity Lock for Welcome + Birth Data Input + Home Dashboard)
+
+### References used
+- `/home/node/.openclaw/workspace/tmp/astro_figma/stitch_splash_welcome_screen/welcome_screen/code.html`
+- `/home/node/.openclaw/workspace/tmp/astro_figma/stitch_splash_welcome_screen/birth_data_input/code.html`
+- `/home/node/.openclaw/workspace/tmp/astro_figma/stitch_splash_welcome_screen/home_daily_dashboard/code.html`
+- `docs/SCREEN_GAPS_AND_DEV_NOTES.md`
+
+### A) Welcome (`src/screens/auth/AuthFlowScreen.tsx`)
+- Refined top app bar IA parity: brand left + settings affordance right.
+- Added hero visual container (rounded 24, border, layered violet glow) to close composition gap from reference central visual block.
+- Adjusted typography hierarchy toward reference scale:
+  - Hero title to `44/48`, tighter tracking
+  - Supporting copy weight lowered and centered
+- Updated CTA fidelity:
+  - Height `56`, radius `12`, explicit arrow glyph, stronger violet glow shadow.
+- Improved footer link hierarchy: muted base text + accent-weighted “Log in”.
+
+### B) Birth Data Input parity pass (`src/screens/auth/RegisterScreen.tsx`, Step 4)
+- Reworked Step-4 layout to mirror reference section IA:
+  - Added dedicated title block (“cosmic blueprint”) + explanatory subtitle.
+  - Introduced labeled field groups and grouped input rows.
+- Matched visual form language:
+  - Input rows now `54` height family, `12` radius, bordered surface rows.
+  - Icon-leading rows for date/time/location semantics (placeholder glyphs in RN text form).
+- Time-of-birth UX parity improvement:
+  - Added compact “Unknown time” toggle chip in header row.
+  - Preserved required validation behavior and unknown-time logic.
+- Increased global register control sizing (taller inputs/buttons, card radius 16) for better parity with modern rounded reference style.
+
+### C) Home Daily Dashboard (`src/screens/HomeScreen.tsx`)
+- Upgraded header IA to closer reference structure:
+  - Left menu, centered “Daily Dashboard / Today’s Energy”, right utility action.
+- Converted content into scrollable stacked dashboard sections with explicit rhythm.
+- Hero card parity improvements:
+  - Split image-area + content-body composition.
+  - Added atmospheric glow layer and badge/title lockup.
+  - CTA includes arrow and improved shadow depth.
+- Added icon-led metric card headers and tip card icon capsule to improve reference-like visual hierarchy.
+- Added lightweight bottom-nav visual treatment to better match screen-level IA expectation from reference dashboard.
+
+### Remaining known gaps after Iteration-2
+- Reference web exports use external image assets and Material Symbols; native app still uses local placeholder glyphs for icons/imagery.
+- Exact font family parity (Space Grotesk / Manrope) is still approximate unless bundled at app level.
+- Bottom navigation in Home remains visual-level parity; full navigator architecture change is intentionally out of scope for this iteration.

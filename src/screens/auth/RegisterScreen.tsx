@@ -186,7 +186,7 @@ export function RegisterScreen({onGoLogin}: Props) {
         />
       ) : null}
 
-      {step === 1 ? <Input placeholder="Ad Soyad" value={fullName} onChangeText={setFullName} /> : null}
+      {step === 1 ? <Input placeholder="Ad Soyad" value={fullName} onChangeText={setFullName} style={styles.tallInput} /> : null}
 
       {step === 2 ? (
         <Input
@@ -195,33 +195,68 @@ export function RegisterScreen({onGoLogin}: Props) {
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
+          style={styles.tallInput}
         />
       ) : null}
 
       {step === 3 ? (
-        <Input placeholder="Şifre" value={password} onChangeText={setPassword} secureTextEntry />
+        <Input placeholder="Şifre" value={password} onChangeText={setPassword} secureTextEntry style={styles.tallInput} />
       ) : null}
 
       {step === 4 ? (
-        <View style={styles.group}>
-          <Input placeholder="Doğum Tarihi (GG/AA/YYYY)" value={birthDate} onChangeText={setBirthDate} />
+        <View style={styles.groupLarge}>
+          <Text style={styles.birthTitle}>Let's find your cosmic blueprint</Text>
+          <Text style={styles.subtitle}>
+            Kişisel haritanı doğru hesaplamak için doğum verilerini net girelim.
+          </Text>
 
-          <Input
-            placeholder="Doğum Saati (SS:DD)"
-            style={unknownBirthTime ? styles.disabledInput : undefined}
-            value={birthTime}
-            onChangeText={setBirthTime}
-            editable={!unknownBirthTime}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Date of Birth</Text>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>☷</Text>
+              <Input
+                placeholder="DD / MM / YYYY"
+                value={birthDate}
+                onChangeText={setBirthDate}
+                style={styles.fieldInput}
+              />
+            </View>
+          </View>
 
-          <Button
-            onPress={() => setUnknownBirthTime(current => !current)}
-            label="Bilmiyorum"
-            variant={unknownBirthTime ? 'primary' : 'secondary'}
-          />
+          <View style={styles.fieldGroup}>
+            <View style={styles.timeHeaderRow}>
+              <Text style={styles.fieldLabel}>Time of Birth</Text>
+              <Pressable
+                style={[styles.unknownTimeToggle, unknownBirthTime && styles.unknownTimeToggleActive]}
+                onPress={() => setUnknownBirthTime(current => !current)}>
+                <Text style={[styles.unknownTimeText, unknownBirthTime && styles.unknownTimeTextActive]}>
+                  Unknown time
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>◷</Text>
+              <Input
+                placeholder="--:--"
+                style={[styles.fieldInput, unknownBirthTime ? styles.disabledInput : undefined]}
+                value={birthTime}
+                onChangeText={setBirthTime}
+                editable={!unknownBirthTime}
+              />
+            </View>
+          </View>
 
-          <Input placeholder="Şehir" value={city} onChangeText={setCity} />
-          <Input placeholder="Ülke" value={country} onChangeText={setCountry} />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Place of Birth</Text>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>⌖</Text>
+              <Input placeholder="City" value={city} onChangeText={setCity} style={styles.fieldInput} />
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldIcon}>⌂</Text>
+              <Input placeholder="Country" value={country} onChangeText={setCountry} style={styles.fieldInput} />
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -278,27 +313,109 @@ export function RegisterScreen({onGoLogin}: Props) {
 
 const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
   StyleSheet.create({
-    card: {gap: 8},
+    card: {
+      gap: 10,
+      borderRadius: 16,
+    },
     title: {
       color: colors.textPrimary,
       fontSize: 24,
       fontWeight: '700',
+      letterSpacing: -0.2,
     },
     stepIndicator: {
       color: colors.textSecondary,
       fontSize: 13,
       marginBottom: 6,
+      fontWeight: '600',
     },
     subtitle: {
       color: colors.textSecondary,
       fontSize: 13,
-      lineHeight: 18,
+      lineHeight: 20,
+    },
+    tallInput: {
+      minHeight: 54,
+      borderRadius: 12,
+      paddingHorizontal: 14,
     },
     disabledInput: {
       opacity: 0.5,
     },
     group: {
       gap: 8,
+    },
+    groupLarge: {
+      gap: 12,
+      paddingVertical: 4,
+    },
+    birthTitle: {
+      color: colors.textPrimary,
+      fontSize: 28,
+      lineHeight: 34,
+      fontWeight: '800',
+      letterSpacing: -0.4,
+    },
+    fieldGroup: {
+      gap: 6,
+    },
+    fieldLabel: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      fontWeight: '700',
+      marginLeft: 2,
+    },
+    fieldRow: {
+      minHeight: 54,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingLeft: 12,
+      paddingRight: 8,
+      gap: 8,
+    },
+    fieldIcon: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      width: 18,
+      textAlign: 'center',
+    },
+    fieldInput: {
+      flex: 1,
+      minHeight: 46,
+      borderWidth: 0,
+      borderRadius: 10,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      backgroundColor: 'transparent',
+    },
+    timeHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    unknownTimeToggle: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: colors.card,
+    },
+    unknownTimeToggleActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    unknownTimeText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    unknownTimeTextActive: {
+      color: colors.primary,
     },
     intentHeader: {
       color: colors.textPrimary,
@@ -328,15 +445,19 @@ const createStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     row: {
       flexDirection: 'row',
       gap: 8,
-      marginTop: 8,
+      marginTop: 10,
     },
     rowButton: {
       flex: 1,
+      minHeight: 48,
+      justifyContent: 'center',
+      borderRadius: 12,
     },
     link: {
       color: colors.primary,
       marginTop: 8,
       textAlign: 'center',
+      fontWeight: '600',
     },
     summaryBox: {
       marginTop: 8,

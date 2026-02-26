@@ -20,14 +20,25 @@ export function AuthFlowScreen() {
 
       {screen === 'welcome' ? (
         <View style={styles.welcomeContent}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandIconWrap}>
-              <Text style={styles.brandIcon}>✦</Text>
+          <View style={styles.headerRow}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandIconWrap}>
+                <Text style={styles.brandIcon}>✦</Text>
+              </View>
+              <Text style={styles.brandName}>Cosmos</Text>
             </View>
-            <Text style={styles.brandName}>Cosmos</Text>
+
+            <Pressable style={styles.settingsButton}>
+              <Text style={styles.settingsIcon}>⚙</Text>
+            </Pressable>
           </View>
 
-          <View style={styles.hero}>
+          <View style={styles.heroVisual}>
+            <View style={styles.heroInnerGlow} />
+            <View style={styles.heroOverlay} />
+          </View>
+
+          <View style={styles.heroTextBlock}>
             <Text style={styles.heroTitle}>Your Path,{"\n"}Written in the Stars</Text>
             <Text style={styles.heroDescription}>
               Discover daily guidance and deep analysis for a balanced, harmonious life.
@@ -36,11 +47,14 @@ export function AuthFlowScreen() {
 
           <View style={styles.welcomeActions}>
             <Pressable style={styles.getStartedButton} onPress={() => setScreen('login')}>
-              <Text style={styles.getStartedText}>Get Started  →</Text>
+              <Text style={styles.getStartedText}>Get Started</Text>
+              <Text style={styles.getStartedArrow}>→</Text>
             </Pressable>
 
             <Pressable onPress={() => setScreen('login')}>
-              <Text style={styles.loginLink}>Already have an account? Log in</Text>
+              <Text style={styles.loginLink}>
+                Already have an account? <Text style={styles.loginLinkStrong}>Log in</Text>
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -68,40 +82,48 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#060B2A',
+      backgroundColor: '#0F0F23',
       paddingHorizontal: 24,
-      paddingVertical: 20,
+      paddingTop: 18,
+      paddingBottom: 12,
       position: 'relative',
       overflow: 'hidden',
     },
     glowTop: {
       position: 'absolute',
-      top: -120,
-      left: -90,
-      width: 260,
-      height: 260,
-      borderRadius: 130,
-      backgroundColor: 'rgba(122,122,255,0.20)',
+      top: -130,
+      left: -96,
+      width: 280,
+      height: 280,
+      borderRadius: 140,
+      backgroundColor: 'rgba(122,122,255,0.18)',
     },
     glowBottom: {
       position: 'absolute',
-      bottom: -140,
+      bottom: -150,
       right: -80,
-      width: 260,
-      height: 260,
-      borderRadius: 130,
-      backgroundColor: 'rgba(122,122,255,0.14)',
+      width: 280,
+      height: 280,
+      borderRadius: 140,
+      backgroundColor: 'rgba(122,122,255,0.12)',
     },
     welcomeContent: {
       flex: 1,
       justifyContent: 'space-between',
-      paddingTop: 24,
-      paddingBottom: 12,
+      paddingTop: 8,
+      paddingBottom: 8,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: 6,
+      paddingBottom: 6,
     },
     brandRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
     },
     brandIconWrap: {
       width: 36,
@@ -113,57 +135,119 @@ const createStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
     },
     brandIcon: {
       color: '#8D7CFF',
-      fontSize: 20,
+      fontSize: 18,
       marginTop: -1,
     },
     brandName: {
       color: '#FFFFFF',
       fontWeight: '700',
-      fontSize: 21,
-      letterSpacing: 0.2,
+      fontSize: 22,
+      letterSpacing: -0.2,
     },
-    hero: {
-      marginTop: 24,
-      gap: 16,
+    settingsButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+    settingsIcon: {
+      color: '#B4B9D3',
+      fontSize: 16,
+    },
+    heroVisual: {
+      width: '100%',
+      aspectRatio: 1,
+      maxHeight: 340,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: '#181738',
+      overflow: 'hidden',
+      marginTop: 4,
+      marginBottom: 10,
+      shadowColor: '#7A7AFF',
+      shadowOffset: {width: 0, height: 12},
+      shadowOpacity: 0.16,
+      shadowRadius: 24,
+      elevation: 8,
+    },
+    heroInnerGlow: {
+      position: 'absolute',
+      top: 26,
+      left: 24,
+      right: 24,
+      bottom: 32,
+      borderRadius: 999,
+      backgroundColor: 'rgba(122,122,255,0.18)',
+    },
+    heroOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(8,10,28,0.58)',
+    },
+    heroTextBlock: {
+      alignItems: 'center',
+      gap: 14,
+      marginTop: 2,
+      marginBottom: 8,
+      paddingHorizontal: 8,
     },
     heroTitle: {
-      fontSize: 42,
-      lineHeight: 46,
-      color: '#F4F6FF',
-      fontWeight: '800',
-      letterSpacing: -0.7,
+      fontSize: 44,
+      lineHeight: 48,
+      textAlign: 'center',
+      color: '#F8F9FF',
+      fontWeight: '700',
+      letterSpacing: -0.8,
     },
     heroDescription: {
       fontSize: 16,
       lineHeight: 24,
-      color: '#9AA4C6',
+      textAlign: 'center',
+      color: '#9CA3BF',
       maxWidth: 320,
+      fontWeight: '300',
     },
     welcomeActions: {
       gap: 16,
+      paddingTop: 8,
+      paddingBottom: 8,
     },
     getStartedButton: {
       height: 56,
-      borderRadius: 14,
+      borderRadius: 12,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 8,
       backgroundColor: '#7A7AFF',
       shadowColor: '#7A7AFF',
       shadowOffset: {width: 0, height: 10},
-      shadowOpacity: 0.35,
+      shadowOpacity: 0.34,
       shadowRadius: 20,
       elevation: 8,
     },
     getStartedText: {
       color: '#F7F9FF',
       fontSize: 18,
-      fontWeight: '700',
-      letterSpacing: 0.3,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+    },
+    getStartedArrow: {
+      color: '#FFFFFF',
+      fontSize: 20,
+      marginTop: -1,
     },
     loginLink: {
       textAlign: 'center',
-      color: '#8F99BA',
-      fontSize: 13,
+      color: '#6D738C',
+      fontSize: 12,
+      fontWeight: '500',
+    },
+    loginLinkStrong: {
+      color: '#7A7AFF',
+      fontWeight: '600',
     },
     authContent: {
       flex: 1,
