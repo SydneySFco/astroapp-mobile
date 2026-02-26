@@ -3,15 +3,15 @@ import {Pressable, StyleSheet, Text, View} from 'react-native';
 
 import {ScreenState} from '../components/ScreenState';
 import {trackEvent} from '../features/analytics/analytics';
-import {Report} from '../features/reports/reportsSlice';
+import {ReportListItem} from '../features/reports/reportsApi';
 import {colors} from '../theme/colors';
 
 type CheckoutResult = 'idle' | 'success' | 'fail' | 'cancel';
 type RequestStatus = 'idle' | 'loading' | 'error';
 
 type Props = {
-  report: Report;
-  onSuccess: () => void;
+  report: ReportListItem;
+  onSuccess: () => void | Promise<void>;
   onBack: () => void;
 };
 
@@ -49,7 +49,7 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
     setStatus('loading');
     setResult('idle');
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const shouldTimeout = attempt % 2 === 0;
       setAttempt(current => current + 1);
 
@@ -63,6 +63,7 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
         return;
       }
 
+      await onSuccess();
       setStatus('idle');
       setResult('success');
       trackEvent('report_buy', {
@@ -70,7 +71,6 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
         price: report.price,
         result: 'success',
       });
-      onSuccess();
     }, MOCK_TIMEOUT_MS);
   };
 
@@ -78,7 +78,7 @@ export function ReportCheckoutScreen({report, onSuccess, onBack}: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Rapor Checkout</Text>
       <Text style={styles.description}>{report.title}</Text>
-      <Text style={styles.price}>Ödenecek tutar: ₺{report.price}</Text>
+      <Text style={styles.price}>{`Ödenecek tutar: ${report.currency} ${report.price}`}</Text>
 
       {status === 'loading' ? (
         <ScreenState
