@@ -1,5 +1,5 @@
 import React, {useMemo, useState} from 'react';
-import {SafeAreaView, StatusBar, StyleSheet} from 'react-native';
+import {SafeAreaView, StatusBar, StyleSheet, Text} from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
 
 import {trackEvent} from '../features/analytics/analytics';
@@ -18,6 +18,7 @@ import {ReportsMarketplaceScreen} from '../screens/ReportsMarketplaceScreen';
 import {SettingsScreen} from '../screens/SettingsScreen';
 import {RootState} from '../store/store';
 import {colors} from '../theme/colors';
+import {appBuildLabel} from '../config/appConfig';
 
 type AppScreen =
   | 'home'
@@ -128,6 +129,7 @@ export function App() {
       ) : (
         <AuthFlowScreen />
       )}
+      <Text style={styles.buildLabel}>{`build ${appBuildLabel}`}</Text>
     </SafeAreaView>
   );
 }
@@ -136,5 +138,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  buildLabel: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: colors.textSecondary,
+    paddingBottom: 8,
   },
 });
