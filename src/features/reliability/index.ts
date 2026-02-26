@@ -10,3 +10,4 @@ export * from './supabaseQuarantineControlPlane';
 export * from './canaryCheckPublisher';
 export * from './canaryCheckPublisherConfig';
 export * from './artifactStore';
+export * from './githubApi';
