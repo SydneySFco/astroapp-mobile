@@ -163,9 +163,40 @@ Aktifleşen/sertleştirilen noktalar:
 - 401/403/timeout edge-case’leri API katmanında normalize edilip UI’da anlamlı fallback + retry olarak gösteriliyor.
 - Checkout sonrası frontend local başlangıç lifecycle’ı `queued` olarak set edilerek state continuity korunuyor.
 
+## RLOOP-018 Backend Lifecycle + Realtime Plan Update
+
+### Lifecycle Source Priority (single source)
+1. **Primary:** `user_reports.status`
+2. **Fallback:** `report_orders.status` (yalnızca `user_reports` henüz oluşmadıysa)
+
+Mapping (UI lifecycle):
+- `user_reports.status`
+  - `queued -> queued`
+  - `processing -> processing`
+  - `ready -> ready`
+  - `archived -> ready` (read ekranında terminal fallback)
+- `report_orders.status` fallback
+  - `pending -> queued`
+  - `paid -> processing`
+  - `failed -> queued` (retry/yeniden üretim bekleyebilir)
+  - `refunded -> ready` (active lifecycle dışı)
+
+### Realtime Read Model
+- Channel: `postgres_changes` on `public.user_reports`
+- Filter: `report_catalog_id=eq.<id>`
+- Trigger: `UPDATE` event geldiğinde detail query refetch
+- Polling fallback: low frequency (`15s`) yalnızca güvenlik ağı
+
+### Telemetry Skeletons
+- `report_lifecycle_transition`
+- `report_lifecycle_ready`
+- `report_realtime_subscription`
+- `reports_retry` içinde `retry_count`
+
 ## Open Items
 
 1. SQL migration scripts hazırlanmalı.
 2. Trigger: `auth.users` -> `profiles` otomatik create (opsiyonel ama önerilir).
 3. Payment provider webhooks + service role güvenlik modeli netleştirilmeli.
 4. Report generation pipeline (queue/edge function) tasarlanmalı.
+5. Realtime payload’ları için DB trigger tabanlı telemetry enrichment (opsiyonel).

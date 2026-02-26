@@ -52,8 +52,10 @@ type SupabaseUserReportRow = {
   status: ReportLifecycleStatus | 'archived';
 };
 
+type SupabaseReportOrderStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+
 type SupabaseReportOrderRow = {
-  status: 'pending' | 'paid' | 'failed' | 'refunded';
+  status: SupabaseReportOrderStatus;
 };
 
 const fallbackCatalog: ReportListItem[] = [
@@ -130,6 +132,17 @@ const mapSupabaseErrorStatus = (message: string): 401 | 403 | 500 => {
 
   return 500;
 };
+
+const mapOrderToLifecycleStatus = (orderStatus: SupabaseReportOrderStatus | null): ReportLifecycleStatus => {
+  if (!orderStatus || orderStatus === 'pending' || orderStatus === 'failed') {
+    return 'queued';
+  }
+
+  return orderStatus === 'paid' ? 'processing' : 'ready';
+};
+
+const isOrderAccessibleForRead = (orderStatus: SupabaseReportOrderStatus | null): boolean =>
+  orderStatus === 'pending' || orderStatus === 'paid';
 
 export const reportsApi = createApi({
   reducerPath: 'reportsApi',
@@ -245,14 +258,14 @@ export const reportsApi = createApi({
           }
 
           const latestOrder = (orderData ?? null) as SupabaseReportOrderRow | null;
-          const lifecycleStatus = latestOrder?.status === 'paid' ? 'processing' : 'queued';
+          const latestOrderStatus = latestOrder?.status ?? null;
 
           return {
             data: {
               ...catalogItem,
               fullContent: catalogItem.preview,
-              purchased: Boolean(latestOrder),
-              lifecycleStatus,
+              purchased: isOrderAccessibleForRead(latestOrderStatus),
+              lifecycleStatus: mapOrderToLifecycleStatus(latestOrderStatus),
             },
           };
         } catch (error) {
