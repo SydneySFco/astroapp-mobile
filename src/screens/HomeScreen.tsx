@@ -10,9 +10,15 @@ type Props = {
   onOpenPaywall: () => void;
   onOpenReportsMarketplace: () => void;
   onOpenMyReports: () => void;
+  onOpenSettings: () => void;
 };
 
-export function HomeScreen({onOpenPaywall, onOpenReportsMarketplace, onOpenMyReports}: Props) {
+export function HomeScreen({
+  onOpenPaywall,
+  onOpenReportsMarketplace,
+  onOpenMyReports,
+  onOpenSettings,
+}: Props) {
   const dispatch = useDispatch();
   const isPremium = useSelector((state: RootState) => state.subscription.isPremium);
 
@@ -37,6 +43,10 @@ export function HomeScreen({onOpenPaywall, onOpenReportsMarketplace, onOpenMyRep
 
       <Pressable style={styles.secondaryButton} onPress={onOpenMyReports}>
         <Text style={styles.secondaryButtonText}>Raporlarım</Text>
+      </Pressable>
+
+      <Pressable style={styles.secondaryButton} onPress={onOpenSettings}>
+        <Text style={styles.secondaryButtonText}>Ayarlar ve Yasal</Text>
       </Pressable>
 
       <Pressable

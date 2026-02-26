@@ -6,7 +6,11 @@ type AnalyticsEventName =
   | 'paywall_view'
   | 'subscribe_success'
   | 'report_view'
-  | 'report_buy';
+  | 'report_buy'
+  | 'settings_view'
+  | 'logout_click'
+  | 'delete_request_click'
+  | 'legal_open';
 
 type AnalyticsPayload = Record<string, string | number | boolean>;
 
