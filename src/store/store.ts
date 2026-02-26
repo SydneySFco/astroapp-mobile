@@ -4,11 +4,13 @@ import {authApi} from '../features/auth/authApi';
 import {healthApi} from '../features/health/healthApi';
 import {onboardingReducer} from '../features/onboarding/onboardingSlice';
 import {subscriptionReducer} from '../features/subscription/subscriptionSlice';
+import {reportsReducer} from '../features/reports/reportsSlice';
 
 export const store = configureStore({
   reducer: {
     onboarding: onboardingReducer,
     subscription: subscriptionReducer,
+    reports: reportsReducer,
     [healthApi.reducerPath]: healthApi.reducer,
     [authApi.reducerPath]: authApi.reducer,
   },

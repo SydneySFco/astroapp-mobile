@@ -8,9 +8,11 @@ import {colors} from '../theme/colors';
 
 type Props = {
   onOpenPaywall: () => void;
+  onOpenReportsMarketplace: () => void;
+  onOpenMyReports: () => void;
 };
 
-export function HomeScreen({onOpenPaywall}: Props) {
+export function HomeScreen({onOpenPaywall, onOpenReportsMarketplace, onOpenMyReports}: Props) {
   const dispatch = useDispatch();
   const isPremium = useSelector((state: RootState) => state.subscription.isPremium);
 
@@ -28,6 +30,14 @@ export function HomeScreen({onOpenPaywall}: Props) {
       ) : (
         <Text style={styles.premiumInfo}>Premium aktif: tüm premium içerikler açıldı.</Text>
       )}
+
+      <Pressable style={styles.secondaryButton} onPress={onOpenReportsMarketplace}>
+        <Text style={styles.secondaryButtonText}>Rapor Markete Git</Text>
+      </Pressable>
+
+      <Pressable style={styles.secondaryButton} onPress={onOpenMyReports}>
+        <Text style={styles.secondaryButtonText}>Raporlarım</Text>
+      </Pressable>
 
       <Pressable
         style={styles.secondaryButton}

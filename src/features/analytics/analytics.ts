@@ -4,7 +4,9 @@ type AnalyticsEventName =
   | 'onboarding_step_view'
   | 'onboarding_complete'
   | 'paywall_view'
-  | 'subscribe_success';
+  | 'subscribe_success'
+  | 'report_view'
+  | 'report_buy';
 
 type AnalyticsPayload = Record<string, string | number | boolean>;
 
