@@ -1,23 +1,51 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 
-import {Report} from '../features/reports/reportsSlice';
+import {ScreenState} from '../components/ScreenState';
+import {ReportListItem} from '../features/reports/reportsApi';
 import {colors} from '../theme/colors';
 
 type Props = {
-  reports: Report[];
+  reports: ReportListItem[];
+  isLoading?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   onOpenReport: (reportId: string) => void;
   onClose: () => void;
 };
 
-export function MyReportsScreen({reports, onOpenReport, onClose}: Props) {
+export function MyReportsScreen({
+  reports,
+  isLoading = false,
+  hasError = false,
+  onRetry,
+  onOpenReport,
+  onClose,
+}: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Raporlarım</Text>
       <Text style={styles.subtitle}>Satın aldığın raporlar burada.</Text>
 
-      {reports.length === 0 ? (
-        <Text style={styles.emptyText}>Henüz satın alınmış rapor yok.</Text>
+      {isLoading ? (
+        <ScreenState
+          mode="loading"
+          title="Raporların hazırlanıyor"
+          description="Satın alınan raporlar yükleniyor, lütfen bekle."
+        />
+      ) : hasError ? (
+        <ScreenState
+          mode="error"
+          title="Raporların yüklenemedi"
+          description="Servis veya bağlantı hatası olabilir. Tekrar deneyebilirsin."
+          onRetry={onRetry}
+        />
+      ) : reports.length === 0 ? (
+        <ScreenState
+          mode="empty"
+          title="Henüz satın alınmış rapor yok"
+          description="Bir rapor satın aldığında burada görünecek."
+        />
       ) : (
         <View style={styles.list}>
           {reports.map(report => (
@@ -49,10 +77,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: colors.textSecondary,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    lineHeight: 20,
   },
   list: {
     gap: 10,
