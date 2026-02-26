@@ -15,6 +15,8 @@ export type ReconcileTelemetryEvent =
       reportId: string;
       attemptCount: number;
       leasedUntil?: string;
+      leaseToken?: string;
+      leaseRevision: number;
     }
   | {
       type: 'reconcile_job_finalized';
@@ -65,6 +67,8 @@ export const runReconcileWorkerTick = async (
     reportId: job.reportId,
     attemptCount: job.attemptCount,
     leasedUntil: job.leasedUntil,
+    leaseToken: job.leaseToken,
+    leaseRevision: job.leaseRevision,
   });
 
   try {
