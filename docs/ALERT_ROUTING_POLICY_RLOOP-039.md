@@ -51,7 +51,31 @@ Default route table (script içine gömülü):
 
 Override için `--route-table <json>` verilir.
 
+## RLOOP-040 Dispatch Worker Taslağı
+
+`src/features/reliability/alertDispatcherWorker.ts` ile runtime worker skeleton eklendi.
+
+Öne çıkanlar:
+- Kanal adapter'ları: `slack` ve `webhook`
+- `dedup_key` + suppression window guard
+- Retry/backoff policy:
+  - exponential backoff (`baseBackoffMs`, `maxBackoffMs`)
+  - `maxAttempts` sonrası dead-letter queue enqueue
+- Dispatch guard route prefix'i:
+  - `webhook://...` => webhook dispatcher
+  - diğer route'lar => slack dispatcher (draft default)
+
+## Observability Alanları (RLOOP-040)
+
+Worker metrik alanları:
+- `dispatchSuccessCount`
+- `dispatchFailureCount`
+- `dispatchSuppressionHitCount`
+
+Bu alanlar run bazlı veya tick bazlı telemetry emit katmanına bağlanmak üzere taslak olarak tanımlandı.
+
 ## Operasyon Notu
 
 - `out-slack` ve `out-webhook` çıktıları dispatch katmanına hazır format üretir.
 - Gerçek webhook/slack gönderimi CI/job orchestration katmanında yapılmalıdır.
+- Dead-letter queue replay/runbook adımı bir sonraki iterasyonda (RLOOP-041) operationalize edilmelidir.
