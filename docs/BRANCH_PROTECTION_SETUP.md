@@ -1,6 +1,6 @@
 # Branch Protection Setup (master)
 
-Bu runbook `master` branch'i için required status checks ve migration adımlarını tanımlar.
+Bu runbook `master` branch'i için required status checks ve drift guard adımlarını tanımlar.
 
 ## Required Status Checks (Canonical)
 
@@ -17,14 +17,30 @@ Publisher check-run (workflow context değil):
 
 - `nonprod-db-canary / drift`
 
-## Migration Steps (RLOOP-057)
+## Drift Guard (RLOOP-058)
 
-RLOOP-057 ile check context adları stabilize edildi. Eski context'ten geçiş için:
+Branch protection required context listesi ile repository workflow/job check context isimleri arasındaki drift CI içinde otomatik doğrulanır.
 
-1. Branch protection required listesine yeni context'i ekle
-2. Eski context'i geçici olarak koru
-3. 1-2 başarılı PR sonrası eski context'i kaldır
-4. Final listeyi bu dokümanla eşitle
+- Script: `scripts/verify-required-check-contexts-rloop058.js`
+- CI integration: `CI Quality Gates` workflow step'i
+  - `push` (master): drift varsa `fail`
+  - `pull_request`: drift/API erişim problemi için `warn`
+
+### Lokal doğrulama
+
+```bash
+set -a && . ./.env && set +a
+
+yarn verify:required-check-contexts:rloop058 --branch master --policy fail --on-api-error fail
+```
+
+### Drift çıktısı nasıl okunur?
+
+- `Missing in workflows`: Required listede var ama workflow/job context'lerinde yok
+  - Fix: workflow/job name'i geri hizala veya stale required context'i branch protection'dan kaldır
+- `Extra workflow contexts`: Workflow tarafında var ama required listede yok
+  - Fix: merge gate olması gereken context ise branch protection required listesine ekle
+- `Potential rename drift candidates`: olası rename eşleşmeleri (heuristic similarity)
 
 ---
 
