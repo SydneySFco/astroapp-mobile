@@ -1,11 +1,30 @@
 # Branch Protection Setup (master)
 
-This runbook describes how to enforce governance guardrails on `master`.
+Bu runbook `master` branch'i için required status checks ve migration adımlarını tanımlar.
 
-## Required Status Check
+## Required Status Checks (Canonical)
 
 Configure branch protection to require:
-- **CI Quality Gates**
+
+- **CI Quality Gates / required-check / ci-quality-gates**
+
+Optional / conditional (default required yapılmamalı):
+
+- **Non-prod DB Canary Lane / required-check / nonprod-live-publish-gate**
+  - Bu check yalnızca live publish path'inde görünür.
+
+Publisher check-run (workflow context değil):
+
+- `nonprod-db-canary / drift`
+
+## Migration Steps (RLOOP-057)
+
+RLOOP-057 ile check context adları stabilize edildi. Eski context'ten geçiş için:
+
+1. Branch protection required listesine yeni context'i ekle
+2. Eski context'i geçici olarak koru
+3. 1-2 başarılı PR sonrası eski context'i kaldır
+4. Final listeyi bu dokümanla eşitle
 
 ---
 
@@ -13,13 +32,13 @@ Configure branch protection to require:
 
 1. Open repository: `SydneySFco/astroapp-mobile`
 2. Go to **Settings → Branches**
-3. Under **Branch protection rules**, click **Add rule**
+3. Under **Branch protection rules**, click **Add rule** (or edit existing `master` rule)
 4. Branch name pattern: `master`
 5. Enable:
    - **Require a pull request before merging**
    - **Require status checks to pass before merging**
 6. In status checks, add/select:
-   - `CI Quality Gates`
+   - `CI Quality Gates / required-check / ci-quality-gates`
 7. (Recommended) Enable:
    - **Require branches to be up to date before merging**
    - **Require conversation resolution before merging**
@@ -42,7 +61,7 @@ curl -sS -X PUT \
   -d '{
     "required_status_checks": {
       "strict": true,
-      "contexts": ["CI Quality Gates"]
+      "contexts": ["CI Quality Gates / required-check / ci-quality-gates"]
     },
     "enforce_admins": true,
     "required_pull_request_reviews": {

@@ -41,19 +41,28 @@ Not: RLOOP-054 kapsamında bu adım dokümante edilmiştir; ortam bazlı approva
 ```yaml
 jobs:
   nonprod-db-canary:
-    # ...existing canary job
+    # ...non-prod checks + canary summary artifact
 
-  live-approval-gate:
-    if: ${{ github.event.inputs.publisher_mode == 'live' }}
+  nonprod-db-canary-live-publish:
     needs: [nonprod-db-canary]
+    if: ${{ needs.nonprod-db-canary.outputs.requested_publisher_mode == 'live' && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     environment:
       name: canary-publisher-live
     steps:
-      - run: echo "Manual approval completed via environment protection"
+      - name: Download canary artifact bundle
+        uses: actions/download-artifact@v4
+      - name: Live publish runtime
+        run: yarn test __tests__/canaryPublisherRuntime.e2e.rloop054.test.ts --runInBand
 ```
 
-Bu pattern ile `publisher_mode=live` koşusunda workflow, environment-level protection üzerinden manuel review bekler.
+RLOOP-056 ile pattern, tek bir `approval-gate` placeholder yerine **ayrı live publish job** olarak netleştirildi. Bu sayede live publish ancak:
+
+1. non-prod canary job başarıyla tamamlandıysa,
+2. `publisher_mode=live` explicit verildiyse,
+3. environment reviewer onayı geldiyse
+
+çalışır.
 
 ## 3) Mode Switch Güvenlik Kuralları
 

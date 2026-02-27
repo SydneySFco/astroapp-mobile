@@ -101,3 +101,20 @@ File: `src/features/reliability/canaryPublisherRuntime.ts`
 - Dry mode (`CANARY_PUBLISHER_MODE=dry`) güvenli default olarak side-effect üretmez
 - `external_id` tabanlı dedupe guard ile duplicate publish baskılanır
 - Observability için `action/outcome/endpoint` dimension setiyle metric emission hazırlanmıştır
+
+## RLOOP-056 Check-Run Summary Integration Draft
+
+Live publish job ayrımı sonrası check görünürlüğü iki katmanda netleştirildi:
+
+1. **Check-run payload (runtime):**
+   - `buildCanaryCheckRunPayload` ile drift/canary signal check output’una yazılır.
+2. **Workflow summary (gate + telemetry):**
+   - `nonprod-db-canary-live-publish` job sonunda `live-publish-check-summary.md` üretilir.
+   - İçerik:
+     - environment gate (`canary-publisher-live`)
+     - manual approval path
+     - live job sonucu
+     - telemetry assertion raporu (`publisher-telemetry-assertion.md`)
+   - Bu özet `GITHUB_STEP_SUMMARY` üzerinden run/check yüzeyinde görünür hale gelir.
+
+Bu taslak, approval gate ve telemetry assertion sonuçlarını tek okunabilir check-run summary yüzeyine taşır.
