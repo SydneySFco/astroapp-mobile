@@ -17,9 +17,6 @@ Run-time sırasında PostgreSQL lock sinyallerini lightweight şekilde toplayıp
   - `wait_event_type='Lock'` waiters
   - `state='active' and wait_event_type='Lock'` blocked_queries
   - `state='active'` active_queries
-- `pg_blocking_pids()`:
-  - blocked -> blocker edge örnekleme
-  - graph summary: `edge_count`, `blocker_pid_count`, `blocked_pid_count`, `max_blockers_per_blocked`
 
 ## Configuration
 - `LOCK_TELEMETRY_DB_URL` (required, fallback `SUPABASE_DB_URL`)
