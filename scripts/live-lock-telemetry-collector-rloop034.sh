@@ -102,7 +102,7 @@ select json_build_object(
   ),
   'sample_source', '${LOCK_TELEMETRY_SAMPLE_SOURCE}+pg_blocking_pids'
 )::text
-from l, a, g;
+from l, a;
 SQL
 )"
 
