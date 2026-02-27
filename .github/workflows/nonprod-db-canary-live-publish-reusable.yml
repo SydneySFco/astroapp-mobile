@@ -1,0 +1,112 @@
+name: Non-prod Canary Live Publish Reusable
+
+on:
+  workflow_call:
+    inputs:
+      run_dir:
+        required: true
+        type: string
+      drift_policy:
+        required: false
+        default: warn
+        type: string
+      telemetry_policy:
+        required: false
+        default: fail
+        type: string
+      requested_publisher_mode:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+      issue_number:
+        required: false
+        default: "54"
+        type: string
+      bot_login:
+        required: false
+        default: github-actions[bot]
+        type: string
+
+jobs:
+  live-publish-gate:
+    name: required-check / nonprod-live-publish-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: canary-publisher-live
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Download canary artifact bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: nonprod-db-canary-${{ github.run_id }}
+          path: .
+
+      - name: Live publish runtime
+        env:
+          CANARY_PUBLISHER_MODE: live
+          CANARY_DRIFT_POLICY: ${{ inputs.drift_policy }}
+          RLOOP054_CANARY_SUMMARY_PATH: ${{ inputs.run_dir }}/canary-summary.json
+          RLOOP054_HEAD_SHA: ${{ inputs.head_sha }}
+          RLOOP054_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          RLOOP054_BOT_LOGIN: ${{ inputs.bot_login }}
+          RLOOP055_TELEMETRY_OUT: ${{ inputs.run_dir }}/publisher-telemetry.json
+        run: |
+          yarn test __tests__/canaryPublisherRuntime.e2e.rloop054.test.ts --runInBand
+
+      - name: Assert telemetry coverage for live mode
+        env:
+          RLOOP055_TELEMETRY_POLICY: ${{ inputs.telemetry_policy }}
+          RLOOP055_TELEMETRY_PATH: ${{ inputs.run_dir }}/publisher-telemetry.json
+          RLOOP055_TELEMETRY_ASSERTION_MD: ${{ inputs.run_dir }}/publisher-telemetry-assertion.md
+        run: |
+          node scripts/assert-live-telemetry-rloop055.js
+
+      - name: Build live gate check-run summary
+        if: always()
+        run: |
+          mkdir -p "${{ inputs.run_dir }}"
+          SUMMARY_FILE="${{ inputs.run_dir }}/live-publish-check-summary.md"
+          {
+            echo "# Non-prod Canary Live Publish Gate Summary"
+            echo
+            echo '- Environment gate: `canary-publisher-live`'
+            echo '- Approval path: manual environment protection'
+            echo '- Requested mode: `${{ inputs.requested_publisher_mode }}`'
+            echo '- Telemetry policy: `${{ inputs.telemetry_policy }}`'
+            echo "- Live publish job result: **${{ job.status }}**"
+            echo
+            if [ -f "${{ inputs.run_dir }}/publisher-telemetry-assertion.md" ]; then
+              echo "## Telemetry Assertion"
+              tail -n +2 "${{ inputs.run_dir }}/publisher-telemetry-assertion.md"
+            else
+              echo "## Telemetry Assertion"
+              echo "- Telemetry assertion report not found."
+            fi
+          } > "$SUMMARY_FILE"
+
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload live publish artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nonprod-db-canary-live-${{ github.run_id }}
+          path: |
+            ${{ inputs.run_dir }}/publisher-telemetry.json
+            ${{ inputs.run_dir }}/publisher-telemetry-assertion.md
+            ${{ inputs.run_dir }}/live-publish-check-summary.md
