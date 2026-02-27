@@ -1,3 +1,5 @@
+import type {GitHubApiClient} from './githubApi';
+
 export type CanaryPolicyMode = 'warn' | 'fail';
 export type CanarySignalStatus = 'success' | 'warn' | 'fail';
 
@@ -22,6 +24,7 @@ export type GitHubCheckRunPayload = {
     text?: string;
   };
   details_url?: string;
+  external_id?: string;
 };
 
 export const CANARY_CHECK_NAME = 'nonprod-db-canary / drift';
@@ -60,6 +63,9 @@ const buildCheckDetails = (signal: CanarySummarySignal): string | undefined => {
   return ['### Findings', '', ...signal.details.map(item => `- ${item}`)].join('\n');
 };
 
+export const buildCanaryCheckExternalId = (signal: CanarySummarySignal, policy: CanaryPolicyMode): string =>
+  `canary-check:${policy}:${signal.runId}:${signal.status}`;
+
 export const buildCanaryCheckRunPayload = (
   signal: CanarySummarySignal,
   policy: CanaryPolicyMode,
@@ -76,6 +82,7 @@ export const buildCanaryCheckRunPayload = (
     text: buildCheckDetails(signal),
   },
   details_url: signal.runUrl,
+  external_id: buildCanaryCheckExternalId(signal, policy),
 });
 
 export type PullRequestComment = {
@@ -136,4 +143,33 @@ export const planStickyCommentUpsert = (
     commentId: sticky.id,
     body,
   };
+};
+
+export const upsertCanaryStickyComment = async (
+  github: GitHubApiClient,
+  input: {
+    issueNumber: number;
+    botLogin: string;
+    signal: CanarySummarySignal;
+    policy: CanaryPolicyMode;
+  },
+): Promise<StickyCommentUpsertPlan> => {
+  const comments = await github.listPullRequestComments(input.issueNumber);
+  const plan = planStickyCommentUpsert(
+    comments.map(comment => ({
+      id: comment.id,
+      body: comment.body,
+      authorLogin: comment.user?.login ?? '',
+    })),
+    buildStickyCommentBody(input.signal, input.policy),
+    input.botLogin,
+  );
+
+  if (plan.action === 'create') {
+    await github.createPullRequestComment(input.issueNumber, plan.body, CANARY_STICKY_COMMENT_MARKER);
+    return plan;
+  }
+
+  await github.updatePullRequestComment(plan.commentId, plan.body);
+  return plan;
 };
