@@ -1,7 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 
 import {supabase} from '../../services/supabase/client';
-import type {FinalizeOutcome, RetryDecision} from './reconcileWorker';
+import type {RetryDecision} from './reconcileWorker';
 import type {
   ReconcileAdminReadModel,
   ReconcileJobOpsViewRow,
@@ -15,62 +15,7 @@ import {mapReconcileJobRowToDomain} from './reconcileJobRepository';
 const JOB_TABLE = 'reconcile_jobs';
 const OPS_VIEW = 'reconcile_job_ops_view';
 const CLAIM_RPC = 'claim_reconcile_job';
-const FINALIZE_RPC = 'finalize_reconcile_job';
 const AUDIT_TABLE = 'reconcile_audit_log';
-
-type FinalizeRpcRow = {
-  outcome: FinalizeOutcome;
-  job: ReconcileJobRow | null;
-};
-
-const pickFinalizeRpcRow = (data: unknown): FinalizeRpcRow | null => {
-  if (!data) {
-    return null;
-  }
-
-  if (Array.isArray(data)) {
-    return (data[0] as FinalizeRpcRow | undefined) ?? null;
-  }
-
-  return data as FinalizeRpcRow;
-};
-
-const finalizeWithLease = async (
-  client: SupabaseClient,
-  input: {
-    jobId: string;
-    leaseToken?: string;
-    leaseRevision: number;
-    resultStatus: 'succeeded' | 'queued' | 'dead_lettered';
-    errorCode?: string;
-    errorMessage?: string;
-    retryAfter?: string;
-    finishedAt?: string;
-  },
-): Promise<FinalizeOutcome> => {
-  const {data, error} = await client.rpc(FINALIZE_RPC, {
-    p_job_id: input.jobId,
-    p_lease_token: input.leaseToken ?? null,
-    p_lease_revision: input.leaseRevision,
-    p_result_status: input.resultStatus,
-    p_error_code: input.errorCode ?? null,
-    p_error_message: input.errorMessage ?? null,
-    p_retry_after: input.retryAfter ?? null,
-    p_finished_at: input.finishedAt ?? null,
-  });
-
-  if (error) {
-    throw error;
-  }
-
-  const row = pickFinalizeRpcRow(data);
-
-  if (!row?.outcome) {
-    throw new Error('finalize_reconcile_job RPC returned no outcome');
-  }
-
-  return row.outcome;
-};
 
 export const createSupabaseReconcileJobRepository = (
   client: SupabaseClient = supabase,
@@ -91,30 +36,39 @@ export const createSupabaseReconcileJobRepository = (
     return mapReconcileJobRowToDomain(data as ReconcileJobRow);
   },
 
-  markSucceeded: async (job, finishedAt) => {
-    return finalizeWithLease(client, {
-      jobId: job.id,
-      leaseToken: job.leaseToken,
-      leaseRevision: job.leaseRevision,
-      resultStatus: 'succeeded',
-      finishedAt,
-    });
+  markSucceeded: async (jobId, finishedAt) => {
+    const {error} = await client
+      .from(JOB_TABLE)
+      .update({
+        status: 'succeeded',
+        leased_until: null,
+        retry_after: null,
+        last_error_code: null,
+        last_error_message: null,
+        updated_at: finishedAt,
+      })
+      .eq('id', jobId);
+
+    if (error) {
+      throw error;
+    }
   },
 
-  markFailed: async (job, errorCode, errorMessage, decision: RetryDecision) => {
-    const resultStatus =
-      decision.nextStatus === 'dead_lettered' ? 'dead_lettered' : 'queued';
+  markFailed: async (jobId, errorCode, errorMessage, decision: RetryDecision) => {
+    const {error} = await client
+      .from(JOB_TABLE)
+      .update({
+        status: decision.nextStatus,
+        leased_until: null,
+        retry_after: decision.nextRetryAfter ?? null,
+        last_error_code: errorCode,
+        last_error_message: errorMessage,
+      })
+      .eq('id', jobId);
 
-    return finalizeWithLease(client, {
-      jobId: job.id,
-      leaseToken: job.leaseToken,
-      leaseRevision: job.leaseRevision,
-      resultStatus,
-      errorCode,
-      errorMessage,
-      retryAfter: decision.nextRetryAfter,
-      finishedAt: resultStatus === 'dead_lettered' ? new Date().toISOString() : undefined,
-    });
+    if (error) {
+      throw error;
+    }
   },
 
   replay: async (input: ReconcileJobReplayInput): Promise<ReconcileJobReplayResult> => {
@@ -125,7 +79,6 @@ export const createSupabaseReconcileJobRepository = (
       .update({
         status: 'queued',
         leased_until: null,
-        lease_token: null,
         retry_after: null,
         last_error_code: input.reasonCode,
         last_error_message: input.reasonMessage,
