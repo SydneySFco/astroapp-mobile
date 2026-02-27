@@ -36,6 +36,25 @@ Live publish adımı environment protection ile manuel onaya bağlanmalıdır.
 
 Not: RLOOP-054 kapsamında bu adım dokümante edilmiştir; ortam bazlı approval policy repo ayarlarından aktif edilmelidir.
 
+### Approval integration draft (workflow pattern)
+
+```yaml
+jobs:
+  nonprod-db-canary:
+    # ...existing canary job
+
+  live-approval-gate:
+    if: ${{ github.event.inputs.publisher_mode == 'live' }}
+    needs: [nonprod-db-canary]
+    runs-on: ubuntu-latest
+    environment:
+      name: canary-publisher-live
+    steps:
+      - run: echo "Manual approval completed via environment protection"
+```
+
+Bu pattern ile `publisher_mode=live` koşusunda workflow, environment-level protection üzerinden manuel review bekler.
+
 ## 3) Mode Switch Güvenlik Kuralları
 
 Mode switch sadece explicit input/env ile yapılmalı, implicit fallback ile `live` açılmamalıdır.

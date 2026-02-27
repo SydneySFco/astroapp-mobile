@@ -12,6 +12,16 @@ Fault-injection harness ve migration/grant drift kontrollerini non-prod DB eriş
   - `schedule` (nightly)
 - Job: `nonprod-db-canary`
 
+### Live gate enforcement (RLOOP-055)
+
+`publisher_mode=live` için workflow seviyesinde hard-check uygulanır:
+
+- Trigger zorunluluğu: yalnızca `workflow_dispatch`
+- Repo allowlist: `SydneySFco/astroapp-mobile`
+- Branch allowlist: `master` veya `release/*`
+
+Koşullardan biri sağlanmazsa lane fail-fast olur.
+
 ## Secret Requirements
 
 ### Required
@@ -66,6 +76,26 @@ Tek bir "Canary Drift Report" yorumunun sürekli güncellenmesi:
 - `drift_detected` + `warn` -> `neutral` (veya warning semantics ile success)
 - `drift_detected` + `fail` -> `failure`
 - `infra_error` -> `failure`
+
+## Telemetry Assertions for Live Mode (RLOOP-055)
+
+Live koşuda minimum telemetry assertion adımı çalışır (`scripts/assert-live-telemetry-rloop055.js`).
+
+Zorunlu metrik anahtarları:
+
+- `github_api_attempt_count` (live için `> 0` olmalı)
+- `github_api_rate_limit_hits` (0 dahil gözlemlenebilir)
+- `publisher_idempotent_dedupe_count` (0 dahil gözlemlenebilir)
+
+Policy:
+
+- `fail` (default): assertion problemi job’ı fail eder
+- `warn`: assertion problemi warning üretir, lane devam eder
+
+Assertion çıktısı artifact olarak saklanır:
+
+- `publisher-telemetry.json`
+- `publisher-telemetry-assertion.md`
 
 ## Artifact Standard
 

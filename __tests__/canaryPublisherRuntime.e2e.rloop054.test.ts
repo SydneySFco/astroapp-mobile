@@ -1,4 +1,5 @@
-import {readFileSync} from 'fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'fs';
+import {dirname} from 'path';
 
 import {
   resolveCanaryCheckPublisherRuntimeConfig,
@@ -95,6 +96,7 @@ describe('RLOOP-054 publisher runtime local e2e skeleton', () => {
     const artifactStore = new InMemoryArtifactStore();
     const config = resolveCanaryCheckPublisherRuntimeConfig(process.env);
     const signal = loadSignal();
+    const telemetryEvents: Array<{metric: string; value: number}> = [];
 
     const result = await runCanaryPublisherRuntime(config, {
       github,
@@ -107,7 +109,33 @@ describe('RLOOP-054 publisher runtime local e2e skeleton', () => {
       artifactMetadata: {
         source: 'rloop-054-e2e-skeleton',
       },
+      metricEmitter: {
+        emit: async event => {
+          telemetryEvents.push({metric: event.metric, value: event.value});
+        },
+      },
     });
+
+    const totals = telemetryEvents.reduce<Record<string, number>>((acc, event) => {
+      acc[event.metric] = (acc[event.metric] ?? 0) + event.value;
+      return acc;
+    }, {});
+
+    const telemetryReport = {
+      mode: config.mode,
+      eventCount: telemetryEvents.length,
+      totals: {
+        github_api_attempt_count: totals.github_api_attempt_count ?? 0,
+        github_api_rate_limit_hits: totals.github_api_rate_limit_hits ?? 0,
+        publisher_idempotent_dedupe_count: totals.publisher_idempotent_dedupe_count ?? 0,
+      },
+    };
+
+    const telemetryOut = process.env.RLOOP055_TELEMETRY_OUT;
+    if (telemetryOut) {
+      mkdirSync(dirname(telemetryOut), {recursive: true});
+      writeFileSync(telemetryOut, JSON.stringify(telemetryReport, null, 2));
+    }
 
     if (config.mode === 'dry') {
       expect(result.checkAction).toBe('dry_run');
@@ -118,5 +146,6 @@ describe('RLOOP-054 publisher runtime local e2e skeleton', () => {
 
     expect(result.checkAction === 'create' || result.checkAction === 'update').toBe(true);
     expect(github.createCheckRun.mock.calls.length + github.updateCheckRun.mock.calls.length).toBeGreaterThan(0);
+    expect(telemetryReport.totals.github_api_attempt_count).toBeGreaterThan(0);
   });
 });
