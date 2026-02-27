@@ -1,42 +1,44 @@
 # Required Check Naming Policy
 
-Bu doküman branch protection'da referanslanan check adlarının drift riskini azaltmak için naming standardını tanımlar.
+Bu doküman, branch protection required status checks için naming standard'ı tanımlar.
 
-## Goals
+## Canonical Pattern
 
-- Branch protection check isimleri **stabil** kalsın
-- Workflow refactor/reusable split sırasında check-context kırılmasın
-- Required-check migration adımları deterministic olsun
+Required context isimleri şu pattern'e uymalıdır:
 
-## Canonical Required Checks
+`<Workflow Name> / required-check / <stable-lane-id>`
 
-Current canonical list:
+Örnek:
 
-1. `CI Quality Gates / required-check / ci-quality-gates`
-2. `Non-prod DB Canary Lane / required-check / nonprod-live-publish-gate` *(live workflow_dispatch runs için)*
-3. `nonprod-db-canary / drift` *(publisher check-run adı; workflow check context değil)*
+- `CI Quality Gates / required-check / ci-quality-gates`
 
-> Not: 2 numara conditional bir gate'tir; yalnızca live publish path tetiklenince görünür.
+## Rules
 
-## Naming Rules
+1. `required-check` segmenti zorunlu ve sabittir.
+2. `<stable-lane-id>` küçük harf + kebab-case olmalıdır.
+3. Workflow rename durumunda check context drift riski oluşur:
+   - branch protection required contexts script ile kontrol edilmelidir.
+4. Job display name değişiklikleri yapılırken branch protection required listesi eşzamanlı gözden geçirilmelidir.
 
-1. Required check taşıyan job'larda `name:` zorunludur.
-2. Prefix standardı: `required-check / <stable-id>`
-3. `<stable-id>` alanı immutable kabul edilir.
-4. Workflow `name:` alanı major governance değişikliği dışında değiştirilmez.
-5. Reusable workflow çağıran parent job adı, branch protection context'i için source-of-truth kabul edilir.
+## Drift Guard and Auto-remediation
 
-## Change Management
+Script:
 
-Bir required-check adı değişecekse:
+- `scripts/verify-required-check-contexts-rloop058.js`
 
-1. Önce yeni adı docs'a ekle
-2. Branch protection'a **eski + yeni** birlikte geçici eklenir
-3. En az 1-2 başarılı PR sonrası eski ad kaldırılır
-4. Değişiklik notu `docs/RLOOP_XXX_NOTES.md` içinde migration evidence ile tutulur
+Modes:
 
-## Anti-Patterns
+- Detect (`--dry-run`, default)
+- Apply (`--apply`, explicit)
 
-- Job name'i otomatik/ephemeral değerle üretmek
-- Workflow split sonrası check context doğrulamadan eski required list'i silmek
-- Check adını env/input bazlı dinamikleştirmek
+Recommended flow:
+
+1. PR/CI: detect mode (`--dry-run`)
+2. Ops/manual: apply mode (`--apply`) with admin-capable token
+3. Optional strict align: `--canonical-only`
+
+## Why this policy exists
+
+- Merge gate'lerin yanlış/boş check'e bakmasını engeller
+- `quality-gates` vs `CI Quality Gates / required-check / ci-quality-gates` gibi drift vakalarını erken yakalar
+- Gerektiğinde kontrollü ve denetlenebilir remediation sağlar

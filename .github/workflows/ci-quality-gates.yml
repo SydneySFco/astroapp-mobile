@@ -38,10 +38,10 @@ jobs:
       - name: Type check
         run: yarn typecheck
 
-      - name: Required-check context drift guard (RLOOP-058)
+      - name: Required-check context drift guard (RLOOP-059 detect mode)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRIFT_GUARD_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
           API_ERROR_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
         run: |
-          yarn verify:required-check-contexts:rloop058 --branch master --policy "$DRIFT_GUARD_POLICY" --on-api-error "$API_ERROR_POLICY"
+          yarn verify:required-check-contexts:rloop058 --dry-run --branch master --policy "$DRIFT_GUARD_POLICY" --on-api-error "$API_ERROR_POLICY"

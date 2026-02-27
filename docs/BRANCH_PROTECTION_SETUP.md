@@ -17,21 +17,51 @@ Publisher check-run (workflow context değil):
 
 - `nonprod-db-canary / drift`
 
-## Drift Guard (RLOOP-058)
+## Drift Guard + Auto-remediation (RLOOP-059)
 
-Branch protection required context listesi ile repository workflow/job check context isimleri arasındaki drift CI içinde otomatik doğrulanır.
+Branch protection required context listesi ile repository workflow/job check context isimleri arasındaki drift CI içinde otomatik doğrulanır ve ops tarafında kontrollü remediation uygulanabilir.
 
 - Script: `scripts/verify-required-check-contexts-rloop058.js`
-- CI integration: `CI Quality Gates` workflow step'i
+- CI integration: `CI Quality Gates` workflow step'i (detect-only)
   - `push` (master): drift varsa `fail`
   - `pull_request`: drift/API erişim problemi için `warn`
 
-### Lokal doğrulama
+### Lokal detect (non-destructive)
 
 ```bash
 set -a && . ./.env && set +a
 
-yarn verify:required-check-contexts:rloop058 --branch master --policy fail --on-api-error fail
+yarn verify:required-check-contexts:rloop058 \
+  --dry-run \
+  --repo SydneySFco/astroapp-mobile \
+  --branch master \
+  --policy fail \
+  --on-api-error fail
+```
+
+### Manual apply (controlled remediation)
+
+> Apply yalnızca explicit `--apply` + geçerli token ile çalışır.
+
+```bash
+set -a && . ./.env && set +a
+
+yarn verify:required-check-contexts:rloop058 \
+  --apply \
+  --repo SydneySFco/astroapp-mobile \
+  --branch master \
+  --policy fail \
+  --on-api-error fail
+```
+
+Optional strict mode (only canonical required-check contexts):
+
+```bash
+yarn verify:required-check-contexts:rloop058 \
+  --apply \
+  --canonical-only \
+  --repo SydneySFco/astroapp-mobile \
+  --branch master
 ```
 
 ### Drift çıktısı nasıl okunur?
@@ -41,6 +71,7 @@ yarn verify:required-check-contexts:rloop058 --branch master --policy fail --on-
 - `Extra workflow contexts`: Workflow tarafında var ama required listede yok
   - Fix: merge gate olması gereken context ise branch protection required listesine ekle
 - `Potential rename drift candidates`: olası rename eşleşmeleri (heuristic similarity)
+- `Planned required contexts after remediation plan`: apply modunda patch için hazırlanmış hedef liste
 
 ---
 
