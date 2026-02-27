@@ -1,4 +1,4 @@
-# Canary Check Publisher — RLOOP-051 Draft
+# Canary Check Publisher — RLOOP-051 Draft (+ RLOOP-052 update)
 
 ## Purpose
 
@@ -54,10 +54,39 @@ Config çözümleme:
 - `CANARY_CHECK_NAME` (default: `nonprod-db-canary / drift`)
 - `CANARY_STICKY_COMMENT_ENABLED` (default: `true`)
 
-## Suggested integration order (RLOOP-052)
+## RLOOP-052 Integration Update
 
-1. Workflow step: summary JSON parse + signal üretimi
-2. Checks API call (create/update check-run)
-3. PR comment upsert call
-4. Artifact store read/write entegrasyonu
-5. Retry/backoff + idempotency safeguards
+### GitHub API client skeleton
+
+File: `src/features/reliability/githubApi.ts`
+
+- Checks API:
+  - `createCheckRun(...)`
+  - `updateCheckRun(...)`
+- PR comments API:
+  - `listPullRequestComments(...)`
+  - `createPullRequestComment(...)`
+  - `updatePullRequestComment(...)`
+- Contents API (artifact draft):
+  - `getRepoContent(...)`
+  - `putRepoContent(...)`
+
+### Retry/backoff and rate-limit behavior
+
+- Exponential backoff + jitter (`DEFAULT_GITHUB_RETRY_POLICY`)
+- Retry on `429`, `5xx`, and `403 secondary rate limit`
+- `Retry-After` ve `X-RateLimit-Reset` header’larıyla bekleme süresi override
+
+### Idempotency/duplicate controls
+
+- Check-run payload artık deterministic `external_id` içerir
+- Sticky comment upsert helper (`upsertCanaryStickyComment`) marker + bot-login ile tek yorumu günceller
+- Artifact write pathi deterministic ve `sha` ile update/create ayrımı yapılır
+
+### ArtifactStore update
+
+File: `src/features/reliability/artifactStore.ts`
+
+- `GitHubArtifactStore` artık draft seviyesinde read/write akışına sahip
+- Path standardı: `<artifactNamePrefix>/<pointer.key>`
+- `exists(pointer)` read bazlı çalışır
