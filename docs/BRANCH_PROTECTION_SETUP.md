@@ -17,14 +17,23 @@ Publisher check-run (workflow context değil):
 
 - `nonprod-db-canary / drift`
 
-## Drift Guard + Auto-remediation (RLOOP-059)
+## Drift Guard + Governance Audit Trail (RLOOP-060)
 
-Branch protection required context listesi ile repository workflow/job check context isimleri arasındaki drift CI içinde otomatik doğrulanır ve ops tarafında kontrollü remediation uygulanabilir.
+Branch protection required context listesi ile repository workflow/job check context isimleri arasındaki drift CI içinde otomatik doğrulanır; remediation işlemleri governance-grade audit artifact + read-after-write verification ile güvenceye alınır.
 
 - Script: `scripts/verify-required-check-contexts-rloop058.js`
 - CI integration: `CI Quality Gates` workflow step'i (detect-only)
   - `push` (master): drift varsa `fail`
   - `pull_request`: drift/API erişim problemi için `warn`
+- Audit artifact: `artifacts/required-check-drift-audit.json`
+  - içerik: `before/after` required contexts, timestamp, actor, mode, branch, plan diff, verification sonucu
+- Policy safety:
+  - default mode: `--dry-run` (non-destructive)
+  - apply mode: explicit `--apply`
+  - optional `--allowlist` / `--denylist` ile apply hedefi kısıtlanabilir
+- Read-after-write verification:
+  - `--apply` sonrası protection tekrar okunur ve expected contexts birebir doğrulanır
+  - mismatch kalırsa işlem fail olur ve actionable error basılır
 
 ### Lokal detect (non-destructive)
 
@@ -36,7 +45,8 @@ yarn verify:required-check-contexts:rloop058 \
   --repo SydneySFco/astroapp-mobile \
   --branch master \
   --policy fail \
-  --on-api-error fail
+  --on-api-error fail \
+  --audit-file artifacts/required-check-drift-audit.json
 ```
 
 ### Manual apply (controlled remediation)
@@ -51,7 +61,8 @@ yarn verify:required-check-contexts:rloop058 \
   --repo SydneySFco/astroapp-mobile \
   --branch master \
   --policy fail \
-  --on-api-error fail
+  --on-api-error fail \
+  --audit-file artifacts/required-check-drift-audit.json
 ```
 
 Optional strict mode (only canonical required-check contexts):
@@ -63,6 +74,23 @@ yarn verify:required-check-contexts:rloop058 \
   --repo SydneySFco/astroapp-mobile \
   --branch master
 ```
+
+Optional policy guardrails (safe apply):
+
+```bash
+yarn verify:required-check-contexts:rloop058 \
+  --apply \
+  --repo SydneySFco/astroapp-mobile \
+  --branch master \
+  --allowlist "CI Quality Gates / required-check / ci-quality-gates" \
+  --denylist "legacy-check-context"
+```
+
+### Rollback path
+
+1. Son başarılı audit artifact'tan `before.requiredContexts` listesini alın.
+2. Gerekirse GitHub API ile required contexts'i o listeye geri patch edin.
+3. Script'i tekrar `--dry-run` çalıştırıp drift/verification durumunu doğrulayın.
 
 ### Drift çıktısı nasıl okunur?
 

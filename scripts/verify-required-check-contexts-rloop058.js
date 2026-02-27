@@ -18,7 +18,13 @@ function parseArgs(argv) {
       continue;
     }
 
-    args[key] = next;
+    if (args[key] === undefined) {
+      args[key] = next;
+    } else if (Array.isArray(args[key])) {
+      args[key].push(next);
+    } else {
+      args[key] = [args[key], next];
+    }
     i += 1;
   }
 
@@ -27,6 +33,15 @@ function parseArgs(argv) {
 
 function normalize(value) {
   return value.trim().replace(/^['"]|['"]$/g, '');
+}
+
+function toList(value) {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value : [value];
+  return raw
+    .flatMap((item) => String(item).split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function inferOwnerRepo(explicitRepo, explicitOwner, explicitRepoName) {
@@ -70,7 +85,7 @@ async function githubRequestJson(url, method, token, body) {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'astroapp-rloop059-required-check-autofix',
+      'User-Agent': 'astroapp-rloop060-required-check-governance-audit',
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -246,10 +261,16 @@ function dedupe(list) {
   return Array.from(new Set(list));
 }
 
-function arraysEqual(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
+function asSortedUnique(list) {
+  return dedupe(list).sort((a, b) => a.localeCompare(b));
+}
+
+function arraysEqualAsSet(a, b) {
+  const left = asSortedUnique(a);
+  const right = asSortedUnique(b);
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
   }
   return true;
 }
@@ -265,18 +286,60 @@ function buildPlannedContexts({ requiredContexts, workflowContexts, renameSugges
   return dedupe(replaced);
 }
 
+function applyPolicyFilters({ plannedContexts, allowlist, denylist }) {
+  const denied = plannedContexts.filter((ctx) => denylist.has(ctx));
+
+  if (allowlist.size === 0) {
+    return {
+      effectiveContexts: plannedContexts,
+      blockedByAllowlist: [],
+      blockedByDenylist: denied,
+    };
+  }
+
+  const blockedByAllowlist = plannedContexts.filter((ctx) => !allowlist.has(ctx));
+  const effectiveContexts = plannedContexts.filter((ctx) => allowlist.has(ctx));
+
+  return {
+    effectiveContexts,
+    blockedByAllowlist,
+    blockedByDenylist: denied,
+  };
+}
+
+function ensureDirFor(filePath) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function writeAuditArtifact(filePath, payload) {
+  ensureDirFor(filePath);
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
 function printSummary(report) {
-  console.log('=== Required-check Context Drift Guard + Auto-remediation (RLOOP-059) ===');
+  console.log('=== Required-check Context Drift Governance Guard (RLOOP-060) ===');
   console.log(`Repo: ${report.owner}/${report.repo}`);
   console.log(`Branch: ${report.branch}`);
   console.log(`Mode: ${report.mode}`);
   console.log(`Canonical only: ${report.canonicalOnly ? 'yes' : 'no'}`);
+  console.log(`Audit file: ${report.auditFile}`);
 
   console.log(`\nRequired contexts (${report.requiredContexts.length})`);
   report.requiredContexts.forEach((ctx) => console.log(`  - ${ctx}`));
 
   console.log(`\nWorkflow/job contexts (${report.workflowContexts.length})`);
   report.workflowContexts.forEach((ctx) => console.log(`  - ${ctx}`));
+
+  if (report.allowlist.length > 0) {
+    console.log(`\nAllowlist (${report.allowlist.length})`);
+    report.allowlist.forEach((ctx) => console.log(`  - ${ctx}`));
+  }
+
+  if (report.denylist.length > 0) {
+    console.log(`\nDenylist (${report.denylist.length})`);
+    report.denylist.forEach((ctx) => console.log(`  - ${ctx}`));
+  }
 
   console.log('\n--- Drift Summary ---');
   if (report.missingInWorkflows.length === 0) {
@@ -307,6 +370,32 @@ function printSummary(report) {
     report.plannedContexts.forEach((ctx) => console.log(`  - ${ctx}`));
   } else {
     console.log('\nPlanned required contexts: no change needed.');
+  }
+
+  if (report.blockedByAllowlist.length > 0) {
+    console.log('\nBlocked by allowlist (removed from effective apply set):');
+    report.blockedByAllowlist.forEach((ctx) => console.log(`  - ${ctx}`));
+  }
+
+  if (report.blockedByDenylist.length > 0) {
+    console.log('\nBlocked by denylist (unsafe for apply):');
+    report.blockedByDenylist.forEach((ctx) => console.log(`  - ${ctx}`));
+  }
+
+  if (report.mode === 'apply') {
+    console.log('\nRead-after-write verification:');
+    console.log(`  - attempted: yes`);
+    console.log(`  - verified: ${report.verified ? 'yes' : 'no'}`);
+    if (!report.verified) {
+      if (report.verificationMissing.length > 0) {
+        console.log('  - missing after apply:');
+        report.verificationMissing.forEach((ctx) => console.log(`      - ${ctx}`));
+      }
+      if (report.verificationUnexpected.length > 0) {
+        console.log('  - unexpected after apply:');
+        report.verificationUnexpected.forEach((ctx) => console.log(`      - ${ctx}`));
+      }
+    }
   }
 
   console.log('\nExecution summary:');
@@ -396,9 +485,32 @@ async function main() {
     canonicalOnly,
   });
 
-  const planChanged = !arraysEqual(requiredContexts, plannedContexts);
+  const allowlist = new Set(toList(args.allowlist));
+  const denylist = new Set(toList(args.denylist));
+
+  const { effectiveContexts, blockedByAllowlist, blockedByDenylist } = applyPolicyFilters({
+    plannedContexts,
+    allowlist,
+    denylist,
+  });
+
+  const planChanged = !arraysEqualAsSet(requiredContexts, effectiveContexts);
+
+  const actor = process.env.GITHUB_ACTOR || process.env.USER || 'unknown';
+  const auditFile = args['audit-file'] || 'artifacts/required-check-drift-audit.json';
 
   let applied = false;
+  let verified = mode !== 'apply';
+  let verifiedContexts = requiredContexts;
+  let verificationMissing = [];
+  let verificationUnexpected = [];
+
+  if (mode === 'apply' && blockedByDenylist.length > 0) {
+    throw new Error(
+      `Apply blocked: ${blockedByDenylist.length} planned context(s) are denylisted. Remove from plan or adjust denylist.`,
+    );
+  }
+
   if (mode === 'apply' && planChanged) {
     try {
       await patchRequiredContexts({
@@ -406,38 +518,72 @@ async function main() {
         repo,
         branch,
         token,
-        contexts: plannedContexts,
+        contexts: effectiveContexts,
         strict,
       });
       applied = true;
     } catch (error) {
       throw new Error(`Failed to patch required contexts: ${error.message}`);
     }
+
+    const verifiedProtection = await fetchBranchProtection({ owner, repo, branch, token });
+    verifiedContexts = extractRequiredContexts(verifiedProtection);
+
+    const expected = asSortedUnique(effectiveContexts);
+    const actual = asSortedUnique(verifiedContexts);
+    verificationMissing = expected.filter((ctx) => !actual.includes(ctx));
+    verificationUnexpected = actual.filter((ctx) => !expected.includes(ctx));
+    verified = verificationMissing.length === 0 && verificationUnexpected.length === 0;
   }
 
   const report = {
+    schemaVersion: 'rloop060.required-check-governance.v1',
+    timestamp: new Date().toISOString(),
+    actor,
+    mode,
     owner,
     repo,
     branch,
-    mode,
     canonicalOnly,
+    auditFile,
     requiredContexts,
     workflowContexts,
     missingInWorkflows,
     extraNotRequired,
     renameSuggestions,
+    allowlist: Array.from(allowlist),
+    denylist: Array.from(denylist),
     plannedContexts,
+    blockedByAllowlist,
+    blockedByDenylist,
+    effectiveContexts,
     planChanged,
     applied,
+    verified,
+    verificationMissing,
+    verificationUnexpected,
+    before: {
+      requiredContexts: requiredContexts,
+    },
+    after: {
+      requiredContexts: mode === 'apply' ? verifiedContexts : requiredContexts,
+    },
   };
 
+  writeAuditArtifact(auditFile, report);
   printSummary(report);
 
   const hasDrift = missingInWorkflows.length > 0 || extraNotRequired.length > 0;
 
   if (mode === 'apply') {
+    if (!verified) {
+      console.error('::error::Read-after-write verification failed.');
+      console.error('::error::Action: rerun in --dry-run to inspect plan, then retry apply; check branch protection admin restrictions and token scopes.');
+      process.exit(1);
+    }
+
     if (planChanged && applied) {
-      console.log('\nResult: APPLIED (required contexts patched).');
+      console.log('\nResult: APPLIED + VERIFIED (required contexts patched and verified).');
       process.exit(0);
     }
 
@@ -460,6 +606,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`::error::Unexpected failure in RLOOP-059 guard: ${error.message}`);
+  console.error(`::error::Unexpected failure in RLOOP-060 guard: ${error.message}`);
   process.exit(1);
 });

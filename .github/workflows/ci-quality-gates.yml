@@ -38,10 +38,23 @@ jobs:
       - name: Type check
         run: yarn typecheck
 
-      - name: Required-check context drift guard (RLOOP-059 detect mode)
+      - name: Required-check context drift guard (RLOOP-060 detect + audit)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRIFT_GUARD_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
           API_ERROR_POLICY: ${{ github.event_name == 'push' && 'fail' || 'warn' }}
         run: |
-          yarn verify:required-check-contexts:rloop058 --dry-run --branch master --policy "$DRIFT_GUARD_POLICY" --on-api-error "$API_ERROR_POLICY"
+          yarn verify:required-check-contexts:rloop058 \
+            --dry-run \
+            --branch master \
+            --policy "$DRIFT_GUARD_POLICY" \
+            --on-api-error "$API_ERROR_POLICY" \
+            --audit-file artifacts/required-check-drift-audit.json
+
+      - name: Upload required-check drift audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-check-drift-audit
+          path: artifacts/required-check-drift-audit.json
+          if-no-files-found: warn
