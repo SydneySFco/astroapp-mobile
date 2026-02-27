@@ -1,0 +1,169 @@
+name: Non-prod DB Canary Lane
+
+on:
+  workflow_dispatch:
+    inputs:
+      drift_policy:
+        description: "Drift policy (warn/fail)"
+        required: false
+        default: "warn"
+      expected_migration_version:
+        description: "Optional expected migration version"
+        required: false
+        default: ""
+      publisher_mode:
+        description: "Publisher runtime mode (dry/live). Default dry for safety"
+        required: false
+        default: "dry"
+      live_telemetry_policy:
+        description: "Telemetry assertion policy for live mode (warn/fail)"
+        required: false
+        default: "fail"
+  schedule:
+    - cron: "20 3 * * *" # nightly 03:20 UTC
+
+jobs:
+  nonprod-db-canary:
+    name: lane / nonprod-db-canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUN_DIR: reports/canary/nonprod/${{ github.run_id }}
+
+    outputs:
+      requested_publisher_mode: ${{ steps.resolve_mode.outputs.requested_publisher_mode }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve publisher mode
+        id: resolve_mode
+        run: |
+          MODE="${{ github.event.inputs.publisher_mode || 'dry' }}"
+          echo "REQUESTED_PUBLISHER_MODE=$MODE" >> "$GITHUB_ENV"
+          echo "requested_publisher_mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Resolved publisher mode: $MODE"
+
+      - name: Live mode allowlist hard-check (repo + branch + trigger)
+        if: env.REQUESTED_PUBLISHER_MODE == 'live'
+        run: |
+          set -euo pipefail
+
+          echo "Validating live publish guardrails..."
+          echo "event=${{ github.event_name }} repo=${{ github.repository }} ref=${{ github.ref_name }}"
+
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "::error::Live mode is only allowed via workflow_dispatch"
+            exit 1
+          fi
+
+          if [ "${{ github.repository }}" != "SydneySFco/astroapp-mobile" ]; then
+            echo "::error::Live mode is blocked for repository '${{ github.repository }}'"
+            exit 1
+          fi
+
+          REF_NAME="${{ github.ref_name }}"
+          if [ "$REF_NAME" != "master" ] && [[ "$REF_NAME" != release/* ]]; then
+            echo "::error::Live mode is blocked for branch '$REF_NAME'. Allowed: master, release/*"
+            exit 1
+          fi
+
+          echo "Live allowlist checks passed."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Secret requirements (documentation)
+        run: |
+          echo "Required secrets: SUPABASE_NONPROD_DB_URL"
+          echo "Optional secrets: EXPECTED_MIGRATION_VERSION"
+
+      - name: Prepare report directories
+        run: |
+          mkdir -p "$RUN_DIR"
+          mkdir -p reports/canary/history
+
+      - name: Drift checks (migration/grant)
+        env:
+          DRIFT_POLICY: ${{ github.event.inputs.drift_policy || 'warn' }}
+          EXPECTED_MIGRATION_VERSION: ${{ github.event.inputs.expected_migration_version || secrets.EXPECTED_MIGRATION_VERSION }}
+        run: |
+          python3 scripts/check-migration-grant-drift-rloop048.py \
+            --policy "$DRIFT_POLICY" \
+            --expected-version "$EXPECTED_MIGRATION_VERSION" \
+            --out-json "$RUN_DIR/drift-check.json" \
+            --out-md "$RUN_DIR/drift-check.md"
+
+      - name: Fault harness against non-prod DB
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_NONPROD_DB_URL }}
+        run: |
+          chmod +x scripts/run-db-fault-harness-rloop048.sh
+          scripts/run-db-fault-harness-rloop048.sh | tee "$RUN_DIR/fault-harness.raw.jsonl"
+
+      - name: Build canary summary + trend
+        env:
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/build-canary-summary-rloop049.py \
+            --fault-jsonl "$RUN_DIR/fault-harness.raw.jsonl" \
+            --drift-json "$RUN_DIR/drift-check.json" \
+            --history-ndjson reports/canary/history/nonprod-db-canary-history.ndjson \
+            --out-json "$RUN_DIR/canary-summary.json" \
+            --out-md "$RUN_DIR/canary-summary.md" \
+            --out-trend-md "$RUN_DIR/canary-trend.md" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "$GITHUB_RUN_URL" \
+            --ref "${{ github.ref_name }}"
+
+      - name: Publisher runtime entrypoint (dry default)
+        if: env.REQUESTED_PUBLISHER_MODE != 'live'
+        env:
+          CANARY_PUBLISHER_MODE: dry
+          CANARY_DRIFT_POLICY: ${{ github.event.inputs.drift_policy || 'warn' }}
+          RLOOP054_CANARY_SUMMARY_PATH: reports/canary/nonprod/${{ github.run_id }}/canary-summary.json
+          RLOOP054_HEAD_SHA: ${{ github.sha }}
+          RLOOP054_ISSUE_NUMBER: "54"
+          RLOOP054_BOT_LOGIN: "github-actions[bot]"
+          RLOOP055_TELEMETRY_OUT: reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry.json
+        run: |
+          yarn test __tests__/canaryPublisherRuntime.e2e.rloop054.test.ts --runInBand
+
+      - name: Upload canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nonprod-db-canary-${{ github.run_id }}
+          path: |
+            reports/canary/nonprod/${{ github.run_id }}/fault-harness.raw.jsonl
+            reports/canary/nonprod/${{ github.run_id }}/drift-check.json
+            reports/canary/nonprod/${{ github.run_id }}/drift-check.md
+            reports/canary/nonprod/${{ github.run_id }}/canary-summary.json
+            reports/canary/nonprod/${{ github.run_id }}/canary-summary.md
+            reports/canary/nonprod/${{ github.run_id }}/canary-trend.md
+            reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry.json
+            reports/canary/nonprod/${{ github.run_id }}/publisher-telemetry-assertion.md
+            reports/canary/nonprod/${{ github.run_id }}/live-publish-check-summary.md
+            reports/canary/history/nonprod-db-canary-history.ndjson
+
+  nonprod-db-canary-live-publish:
+    name: required-check / nonprod-live-publish-gate
+    needs: [nonprod-db-canary]
+    if: ${{ needs.nonprod-db-canary.outputs.requested_publisher_mode == 'live' && github.event_name == 'workflow_dispatch' }}
+    uses: ./.github/workflows/nonprod-db-canary-live-publish-reusable.yml
+    with:
+      run_dir: reports/canary/nonprod/${{ github.run_id }}
+      drift_policy: ${{ github.event.inputs.drift_policy || 'warn' }}
+      telemetry_policy: ${{ github.event.inputs.live_telemetry_policy || 'fail' }}
+      requested_publisher_mode: ${{ needs.nonprod-db-canary.outputs.requested_publisher_mode }}
+      head_sha: ${{ github.sha }}
+      issue_number: "54"
+      bot_login: "github-actions[bot]"
+    secrets: inherit
