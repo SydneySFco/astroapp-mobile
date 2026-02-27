@@ -11,3 +11,4 @@ export * from './canaryCheckPublisher';
 export * from './canaryCheckPublisherConfig';
 export * from './artifactStore';
 export * from './githubApi';
+export * from './canaryPublisherRuntime';
