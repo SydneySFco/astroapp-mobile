@@ -1,4 +1,4 @@
-# Canary Check Publisher — RLOOP-051 Draft (+ RLOOP-052 update)
+# Canary Check Publisher — RLOOP-051 Draft
 
 ## Purpose
 
@@ -50,71 +50,14 @@ File: `src/features/reliability/canaryCheckPublisherConfig.ts`
 
 Config çözümleme:
 
-- `CANARY_PUBLISHER_MODE=dry|live` (default: `dry`)
 - `CANARY_DRIFT_POLICY=warn|fail`
 - `CANARY_CHECK_NAME` (default: `nonprod-db-canary / drift`)
 - `CANARY_STICKY_COMMENT_ENABLED` (default: `true`)
-- `CANARY_ARTIFACT_SYNC_ENABLED` (default: `true`)
 
-## RLOOP-052 Integration Update
+## Suggested integration order (RLOOP-052)
 
-### GitHub API client skeleton
-
-File: `src/features/reliability/githubApi.ts`
-
-- Checks API:
-  - `createCheckRun(...)`
-  - `updateCheckRun(...)`
-- PR comments API:
-  - `listPullRequestComments(...)`
-  - `createPullRequestComment(...)`
-  - `updatePullRequestComment(...)`
-- Contents API (artifact draft):
-  - `getRepoContent(...)`
-  - `putRepoContent(...)`
-
-### Retry/backoff and rate-limit behavior
-
-- Exponential backoff + jitter (`DEFAULT_GITHUB_RETRY_POLICY`)
-- Retry on `429`, `5xx`, and `403 secondary rate limit`
-- `Retry-After` ve `X-RateLimit-Reset` header’larıyla bekleme süresi override
-
-### Idempotency/duplicate controls
-
-- Check-run payload artık deterministic `external_id` içerir
-- Sticky comment upsert helper (`upsertCanaryStickyComment`) marker + bot-login ile tek yorumu günceller
-- Artifact write pathi deterministic ve `sha` ile update/create ayrımı yapılır
-
-### ArtifactStore update
-
-File: `src/features/reliability/artifactStore.ts`
-
-- `GitHubArtifactStore` artık draft seviyesinde read/write akışına sahip
-- Path standardı: `<artifactNamePrefix>/<pointer.key>`
-- `exists(pointer)` read bazlı çalışır
-
-## RLOOP-053 Runtime Wiring Update
-
-File: `src/features/reliability/canaryPublisherRuntime.ts`
-
-- Check create/update + sticky comment upsert + artifact sync tek runtime akışında orkestra edilir
-- Dry mode (`CANARY_PUBLISHER_MODE=dry`) güvenli default olarak side-effect üretmez
-- `external_id` tabanlı dedupe guard ile duplicate publish baskılanır
-- Observability için `action/outcome/endpoint` dimension setiyle metric emission hazırlanmıştır
-
-## RLOOP-056 Check-Run Summary Integration Draft
-
-Live publish job ayrımı sonrası check görünürlüğü iki katmanda netleştirildi:
-
-1. **Check-run payload (runtime):**
-   - `buildCanaryCheckRunPayload` ile drift/canary signal check output’una yazılır.
-2. **Workflow summary (gate + telemetry):**
-   - `nonprod-db-canary-live-publish` job sonunda `live-publish-check-summary.md` üretilir.
-   - İçerik:
-     - environment gate (`canary-publisher-live`)
-     - manual approval path
-     - live job sonucu
-     - telemetry assertion raporu (`publisher-telemetry-assertion.md`)
-   - Bu özet `GITHUB_STEP_SUMMARY` üzerinden run/check yüzeyinde görünür hale gelir.
-
-Bu taslak, approval gate ve telemetry assertion sonuçlarını tek okunabilir check-run summary yüzeyine taşır.
+1. Workflow step: summary JSON parse + signal üretimi
+2. Checks API call (create/update check-run)
+3. PR comment upsert call
+4. Artifact store read/write entegrasyonu
+5. Retry/backoff + idempotency safeguards

@@ -66,3 +66,19 @@ Bu isim branch protection'da required check olarak referanslanacağı için immu
   1. Drift policy `warn`a döndür
   2. Required check temporary disable veya bypass window uygula
   3. Incident sonrası tekrar Phase 1'e dön
+
+## RLOOP-051 Draft Wiring Update
+
+RLOOP-051 ile check publisher için kod tarafı iskeleti hazırlanmıştır.
+
+- Check payload builder: `src/features/reliability/canaryCheckPublisher.ts`
+- Sticky comment strategy: marker tabanlı single-comment upsert
+- Runtime config resolver: `src/features/reliability/canaryCheckPublisherConfig.ts`
+
+Runtime env knobs:
+
+- `CANARY_DRIFT_POLICY=warn|fail`
+- `CANARY_CHECK_NAME` (default: `nonprod-db-canary / drift`)
+- `CANARY_STICKY_COMMENT_ENABLED=true|false`
+
+> Not: Bu iterasyonda API client çağrıları intentionally skeleton seviyesindedir; workflow publish step bağlantısı RLOOP-052 scope'una önerilmiştir.

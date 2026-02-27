@@ -1,5 +1,3 @@
-import {GitHubApiClient, type GitHubApiClientConfig} from './githubApi';
-
 export type ArtifactPointer = {
   key: string;
   runId?: string;
@@ -25,41 +23,28 @@ export interface ArtifactStore {
   exists(pointer: ArtifactPointer): Promise<boolean>;
 }
 
-export type GitHubArtifactStoreConfig = GitHubApiClientConfig & {
+export type GitHubArtifactStoreConfig = {
+  owner: string;
+  repo: string;
   artifactNamePrefix: string;
-  branch?: string;
+  token: string;
 };
 
-const buildArtifactPath = (prefix: string, pointer: ArtifactPointer): string => {
-  const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, '');
-  const normalizedKey = pointer.key.replace(/^\/+/, '');
-  return `${normalizedPrefix}/${normalizedKey}`;
-};
-
+/**
+ * Draft adapter for GitHub-backed artifact persistence.
+ *
+ * This intentionally ships as a skeleton so we can freeze interfaces and
+ * runtime wiring before introducing API-coupled implementation details.
+ */
 export class GitHubArtifactStore implements ArtifactStore {
-  private readonly client: GitHubApiClient;
-
-  constructor(private readonly config: GitHubArtifactStoreConfig) {
-    this.client = new GitHubApiClient(config);
-  }
+  constructor(private readonly config: GitHubArtifactStoreConfig) {}
 
   public async read(pointer: ArtifactPointer): Promise<ArtifactReadResult | null> {
     if (!this.config.token || !pointer.key) {
       return null;
     }
 
-    const path = buildArtifactPath(this.config.artifactNamePrefix, pointer);
-    const file = await this.client.getRepoContent(path, this.config.branch);
-    if (!file) {
-      return null;
-    }
-
-    return {
-      pointer,
-      content: this.client.decodeContent(file.content),
-      contentType: 'application/json',
-      fetchedAt: new Date().toISOString(),
-    };
+    return null;
   }
 
   public async write(input: ArtifactWriteInput): Promise<void> {
@@ -67,16 +52,7 @@ export class GitHubArtifactStore implements ArtifactStore {
       throw new Error('GitHubArtifactStore.write requires token and pointer.key');
     }
 
-    const path = buildArtifactPath(this.config.artifactNamePrefix, input.pointer);
-    const existing = await this.client.getRepoContent(path, this.config.branch);
-
-    await this.client.putRepoContent({
-      path,
-      message: `[canary-artifact] upsert ${input.pointer.key}`,
-      content: input.content,
-      sha: existing?.sha,
-      branch: this.config.branch,
-    });
+    throw new Error('GitHubArtifactStore.write is not implemented yet');
   }
 
   public async exists(pointer: ArtifactPointer): Promise<boolean> {
