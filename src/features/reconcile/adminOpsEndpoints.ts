@@ -4,26 +4,10 @@ import type {
   RuntimeReconcileJobRepository,
 } from './reconcileJobRepository';
 
-export type AdminOpsRole = 'admin_ops' | 'admin_approver';
-
-export type AdminOpsUnauthorizedError = {
-  error: {
-    code: 'ADMIN_OPS_UNAUTHORIZED';
-    message: string;
-    requiredAnyRole: AdminOpsRole[];
-  };
-};
-
-export type AdminOpsRequestContext = {
-  actorId?: string;
-  roles?: string[];
-};
-
 export type AdminOpsRequest<TParams = Record<string, string>, TQuery = Record<string, unknown>, TBody = unknown> = {
   params?: TParams;
   query?: TQuery;
   body?: TBody;
-  context?: AdminOpsRequestContext;
 };
 
 export type AdminOpsResponse<TData> = {
@@ -100,31 +84,10 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
   return undefined;
 };
 
-const unauthorized = (requiredAnyRole: AdminOpsRole[]): AdminOpsResponse<AdminOpsUnauthorizedError> => ({
-  status: 403,
-  data: {
-    error: {
-      code: 'ADMIN_OPS_UNAUTHORIZED',
-      message: 'Admin ops role required',
-      requiredAnyRole,
-    },
-  },
-});
-
-const hasAnyRole = (context: AdminOpsRequestContext | undefined, roles: AdminOpsRole[]): boolean => {
-  const userRoles = context?.roles ?? [];
-  return roles.some(role => userRoles.includes(role));
-};
-
 export const listReconcileJobsHandler = async (
   req: AdminOpsRequest<Record<string, string>, ListJobsQuery>,
   deps: AdminOpsEndpointDeps,
-): Promise<AdminOpsResponse<{items: ReconcileJobDto[]} | {error: string} | AdminOpsUnauthorizedError>> => {
-  const requiredAnyRole: AdminOpsRole[] = ['admin_ops', 'admin_approver'];
-  if (!hasAnyRole(req.context, requiredAnyRole)) {
-    return unauthorized(requiredAnyRole);
-  }
-
+): Promise<AdminOpsResponse<{items: ReconcileJobDto[]} | {error: string}>> => {
   const status = parseOptionalString(req.query?.status);
   const limit = parseOptionalNumber(req.query?.limit);
   const offset = parseOptionalNumber(req.query?.offset);
@@ -144,12 +107,7 @@ export const listReconcileJobsHandler = async (
 export const getReconcileJobDetailHandler = async (
   req: AdminOpsRequest<{jobId: string}>,
   deps: Pick<AdminOpsEndpointDeps, 'readModel'>,
-): Promise<AdminOpsResponse<{item: ReconcileJobDto} | {error: string} | AdminOpsUnauthorizedError>> => {
-  const requiredAnyRole: AdminOpsRole[] = ['admin_ops', 'admin_approver'];
-  if (!hasAnyRole(req.context, requiredAnyRole)) {
-    return unauthorized(requiredAnyRole);
-  }
-
+): Promise<AdminOpsResponse<{item: ReconcileJobDto} | {error: string}>> => {
   const jobId = parseOptionalString(req.params?.jobId);
   if (!jobId) {
     return {status: 400, data: {error: 'jobId is required'}};
@@ -169,12 +127,7 @@ export const getReconcileJobDetailHandler = async (
 export const replayReconcileJobHandler = async (
   req: AdminOpsRequest<{jobId: string}, Record<string, unknown>, ReplayRequestBody>,
   deps: Pick<AdminOpsEndpointDeps, 'repository'>,
-): Promise<AdminOpsResponse<{jobId: string; replayRequestedAt: string} | {error: string} | AdminOpsUnauthorizedError>> => {
-  const requiredAnyRole: AdminOpsRole[] = ['admin_approver'];
-  if (!hasAnyRole(req.context, requiredAnyRole)) {
-    return unauthorized(requiredAnyRole);
-  }
-
+): Promise<AdminOpsResponse<{jobId: string; replayRequestedAt: string} | {error: string}>> => {
   const jobId = parseOptionalString(req.params?.jobId);
   if (!jobId) {
     return {status: 400, data: {error: 'jobId is required'}};
@@ -182,16 +135,9 @@ export const replayReconcileJobHandler = async (
 
   const reasonCode = parseOptionalString(req.body?.reasonCode) ?? 'ADMIN_REPLAY_REQUESTED';
   const reasonMessage = parseOptionalString(req.body?.reasonMessage) ?? 'Replay requested by admin ops endpoint';
-  const actorId = parseOptionalString(req.body?.actorId) ?? req.context?.actorId;
-  const reason = parseOptionalString(req.body?.reason);
-  const approvalRef = parseOptionalString(req.body?.approvalRef);
-
-  if (!actorId || !reason || !approvalRef) {
-    return {
-      status: 400,
-      data: {error: 'actorId, reason and approvalRef are required'},
-    };
-  }
+  const actorId = parseOptionalString(req.body?.actorId) ?? 'admin-ops';
+  const reason = parseOptionalString(req.body?.reason) ?? reasonMessage;
+  const approvalRef = parseOptionalString(req.body?.approvalRef) ?? 'manual-admin-ops';
 
   const replay = await deps.repository.replay({
     jobId,
