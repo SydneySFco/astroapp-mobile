@@ -11,6 +11,10 @@ on:
         description: "Optional expected migration version"
         required: false
         default: ""
+      publisher_mode:
+        description: "Publisher runtime mode (dry/live). Default dry for safety"
+        required: false
+        default: "dry"
   schedule:
     - cron: "20 3 * * *" # nightly 03:20 UTC
 
@@ -76,6 +80,17 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --run-url "$GITHUB_RUN_URL" \
             --ref "${{ github.ref_name }}"
+
+      - name: Publisher runtime entrypoint (dry default)
+        env:
+          CANARY_PUBLISHER_MODE: ${{ github.event.inputs.publisher_mode || 'dry' }}
+          CANARY_DRIFT_POLICY: ${{ github.event.inputs.drift_policy || 'warn' }}
+          RLOOP054_CANARY_SUMMARY_PATH: reports/canary/nonprod/${{ github.run_id }}/canary-summary.json
+          RLOOP054_HEAD_SHA: ${{ github.sha }}
+          RLOOP054_ISSUE_NUMBER: "54"
+          RLOOP054_BOT_LOGIN: "github-actions[bot]"
+        run: |
+          yarn test __tests__/canaryPublisherRuntime.e2e.rloop054.test.ts --runInBand
 
       - name: Upload canary artifacts
         if: always()

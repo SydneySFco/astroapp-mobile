@@ -44,6 +44,61 @@ Bu mapping `action/outcome/reason` triad’ını API-level hata sözleşmesi ile
 - **POST redrive/drop stale transition**: `stale_conflict`
 - **authz/validation/not-found/internal failures**: `rejected`
 
+## RLOOP-054 Dashboard Metric Set (Ops)
+
+Aşağıdaki paneller canary publisher runtime için operasyonel minimum dashboard setini oluşturur.
+
+### 1) Canary Publish Success / Failure
+
+Kaynak metric:
+- `github_api_attempt_count`
+
+Önerilen filtre:
+- `action in (check_run, sticky_comment, artifact_sync)`
+- `outcome in (success, failure)`
+
+Önerilen görselleştirme:
+- stacked time-series (`success` vs `failure`)
+- SLI: `success / (success + failure)`
+
+### 2) Dedupe Hit Ratio
+
+Kaynak metricler:
+- pay: `publisher_idempotent_dedupe_count`
+- payda: `github_api_attempt_count{action="check_run", outcome="success"} + publisher_idempotent_dedupe_count`
+
+Formül:
+- `dedupe_ratio = dedupe_count / total_publish_intents`
+
+Alarm önerisi:
+- ani yükseliş (ör. > %25) -> olası replay/idempotency anomalisi
+
+### 3) Rate-limit Hit Trend
+
+Kaynak metric:
+- `github_api_rate_limit_hits`
+
+Boyut:
+- `endpoint`
+
+Önerilen görselleştirme:
+- endpoint bazlı time-series
+- 1h moving average + 24h baseline karşılaştırması
+
+### 4) Drift Severity Distribution
+
+Kaynak sinyal:
+- canary summary status (`success|warn|fail`) ve drift check detayları
+
+Önerilen bucket’lar:
+- `success` = healthy
+- `warn` = medium severity
+- `fail` = high severity
+
+Önerilen görselleştirme:
+- günlük yüzde dağılımı (stacked area / donut)
+- release window filtresi ile karşılaştırma
+
 ## Sample Payload
 
 ```json
