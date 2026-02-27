@@ -1,4 +1,4 @@
-# Non-prod DB Canary Lane — RLOOP-049 (+RLOOP-050 update)
+# Non-prod DB Canary Lane — RLOOP-049
 
 ## Objective
 
@@ -11,16 +11,6 @@ Fault-injection harness ve migration/grant drift kontrollerini non-prod DB eriş
   - `workflow_dispatch` (manual)
   - `schedule` (nightly)
 - Job: `nonprod-db-canary`
-
-### Live gate enforcement (RLOOP-055)
-
-`publisher_mode=live` için workflow seviyesinde hard-check uygulanır:
-
-- Trigger zorunluluğu: yalnızca `workflow_dispatch`
-- Repo allowlist: `SydneySFco/astroapp-mobile`
-- Branch allowlist: `master` veya `release/*`
-
-Koşullardan biri sağlanmazsa lane fail-fast olur.
 
 ## Secret Requirements
 
@@ -44,59 +34,6 @@ Koşullardan biri sağlanmazsa lane fail-fast olur.
   - Drift bulunursa job fail olur
   - Required-check için hedef davranış
 
-## PR Check Surface Integration Draft (RLOOP-050)
-
-### Check-run
-
-- Name (stable): `nonprod-db-canary / drift`
-- Summary body:
-  - policy (`warn`/`fail`)
-  - drift result (`no_drift`/`drift_detected`)
-  - migration delta kısa özeti
-  - artifact links
-- Detail body:
-  - drift-check.md özeti
-  - failure nedeni (infra vs policy)
-  - recommended next step
-
-### PR Comment (sticky/upsert)
-
-Tek bir "Canary Drift Report" yorumunun sürekli güncellenmesi:
-
-- Run id / timestamp
-- Policy
-- Drift sonucu
-- Warn/fail sebebi
-- Artifact path linkleri
-- Trend snippet (last N runs)
-
-### Status Mapping
-
-- `no_drift` -> `success`
-- `drift_detected` + `warn` -> `neutral` (veya warning semantics ile success)
-- `drift_detected` + `fail` -> `failure`
-- `infra_error` -> `failure`
-
-## Telemetry Assertions for Live Mode (RLOOP-055)
-
-Live koşuda minimum telemetry assertion adımı çalışır (`scripts/assert-live-telemetry-rloop055.js`).
-
-Zorunlu metrik anahtarları:
-
-- `github_api_attempt_count` (live için `> 0` olmalı)
-- `github_api_rate_limit_hits` (0 dahil gözlemlenebilir)
-- `publisher_idempotent_dedupe_count` (0 dahil gözlemlenebilir)
-
-Policy:
-
-- `fail` (default): assertion problemi job’ı fail eder
-- `warn`: assertion problemi warning üretir, lane devam eder
-
-Assertion çıktısı artifact olarak saklanır:
-
-- `publisher-telemetry.json`
-- `publisher-telemetry-assertion.md`
-
 ## Artifact Standard
 
 Per run (`reports/canary/nonprod/<run_id>/`):
@@ -112,28 +49,9 @@ Cross-run history:
 
 - `reports/canary/history/nonprod-db-canary-history.ndjson`
 
-## History Persistence Strategy (RLOOP-050)
-
-Artifact store abstraction:
-
-- `ArtifactStore.writeRunArtifacts(runId, files)`
-- `ArtifactStore.appendHistory(streamKey, line)`
-- `ArtifactStore.readHistory(streamKey, limit)`
-
-Backend seçenekleri:
-
-1. GitHub artifact + repo history file (başlangıç)
-2. Object storage (S3/GCS) adapter (ölçek)
-
-Retention:
-
-- Run artifacts: kısa/orta süre (örn. 14-30 gün)
-- NDJSON history: uzun süreli trend analizi için korunur
-
 ## Promotion Plan (Draft)
 
 1. Canary lane'i bir süre `warn` policy ile izleme
 2. Drift false-positive kaynaklarını temizleme
-3. PR check surface formatını freeze etme
-4. Branch protection içinde canary check'i required check'e alma
-5. Default policy'yi `fail`a çekme
+3. Branch protection içinde canary job'ı required check'e alma
+4. Default policy'yi `fail`a çekme

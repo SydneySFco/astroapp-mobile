@@ -44,6 +44,33 @@ Yeni artifact çıktıları:
 - `reports/drift-alert-routing-rloop038.json`
 - `reports/drift-alert-routing-rloop038.md`
 
+## Non-prod Canary Lane + Drift Gate Draft (RLOOP-049)
+
+Yeni lane: `.github/workflows/nonprod-db-canary-lane.yml`
+
+- Trigger: manual + nightly
+- Non-prod DB fault harness: `scripts/run-db-fault-harness-rloop048.sh`
+- Drift gate: `scripts/check-migration-grant-drift-rloop048.py`
+  - `--policy warn|fail` desteği
+  - JSON/Markdown rapor üretimi
+
+Canary artifact standardı:
+
+- `reports/canary/nonprod/<run_id>/fault-harness.raw.jsonl`
+- `reports/canary/nonprod/<run_id>/drift-check.json`
+- `reports/canary/nonprod/<run_id>/drift-check.md`
+- `reports/canary/nonprod/<run_id>/canary-summary.json`
+- `reports/canary/nonprod/<run_id>/canary-summary.md`
+- `reports/canary/nonprod/<run_id>/canary-trend.md`
+- `reports/canary/history/nonprod-db-canary-history.ndjson`
+
+Required-check hazırlığı için öneri:
+
+1. Başlangıçta `drift_policy=warn`
+2. Birkaç sprint trend gözlemi
+3. Drift gürültüsü temizlenince `drift_policy=fail`
+4. Branch protection required checks'e canary lane ekleme
+
 ## PR Gate Notu
 
 PR merge için CI job'unun yeşil olması zorunludur.
